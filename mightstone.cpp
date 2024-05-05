@@ -15,22 +15,50 @@ using namespace std;
 static MST_Env* mst_env = new MST_Env;
 
 MST_Object* SolveMST_Object(MST_Object* obj, int at) {
+  static MST_Object error = {NULL, MST_Error};
+  if (obj->Type == MST_Error) {
+    if (MST_GetMode()) {
+      return &error;
+    } else {
+      exit(-1);
+    }
+  }
   if (obj->Type == MST_Expression) {
     MST_Expr* expr = (MST_Expr*)obj;
     if (at && expr->Operator == MST_For) {
       if (expr->nOperand < 2) {
         cout << "invalid expression" << endl;
-        exit(-1);
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
       }
       if (expr->Operands[0]->Type != MST_SymbolReference) {
         cout << "error" << endl;
-        exit(-1);
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
       }
       if (expr->Operands[1]->Type != MST_Value) {
         cout << "error" << endl;
-        exit(-1);
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
       }
+      MST_SetErrorFlag(0);
       int n = GetIntMST_Obj(expr->Operands[1]);
+      if (MST_GetErrorFlag()) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
       MST_Object* val = AllocMST_Val(32);
       *((int*)val->Ptr) = 0;
       MST_Sym* cnt = MST_AddSpecialSym(expr->Operands[0], val);
@@ -39,6 +67,13 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
         for (int j = 0; j < expr->nOperand - 2; j++) {
           if (expr->Operands[j+2] && expr->Operands[j+2]->Type == MST_Expression)
             progexpr.push_back(SolveMST_Object(CopyMST_Object(expr->Operands[j+2]), at));
+            if (progexpr.back()->Type == MST_Error) {
+              if (MST_GetMode()) {
+                return &error;
+              } else {
+                exit(-1);
+              }
+            }
           }
         *((int*)val->Ptr) = i+1;
         MST_BindSym((MST_Object*)cnt, val);
@@ -56,6 +91,13 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
     for (int i = 0; i < expr->nOperand; i++) {
       if (expr->Operands[i]) {
         expr->Operands[i] = SolveMST_Object(expr->Operands[i], at);
+        if (expr->Operands[i]->Type == MST_Error) {
+          if (MST_GetMode()) {
+            return &error;
+          } else {
+            exit(-1);
+          }
+        }
       }
     }
     if (at) {
@@ -66,7 +108,11 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
       } else if (expr->Operator == MST_Set) {
         if (expr->nOperand != 2) {
           cout << "invalid expression" << endl;
-          exit(-1);
+          if (MST_GetMode()) {
+            return &error;
+          } else {
+            exit(-1);
+          }
         }
         if (expr->Operands[0]->Type == MST_Symbol) {
           MST_Sym* sym = (MST_Sym*)expr->Operands[0];
@@ -83,13 +129,24 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
           MST_Sym* sym = (MST_Sym*)expr->Operands[i];
           if (sym->Val) {
             expr->Operands[i] = CopyMST_Object(sym->Val);
+            if (expr->Operands[i]->Type == MST_Error) {
+              if (MST_GetMode()) {
+                return &error;
+              } else {
+                exit(-1);
+              }
+            }
           }
         }
       }
       if (expr->Operator == MST_Call) {
         if (expr->nOperand < 1) {
           cout << "invalid expression" << endl;
-          exit(-1);
+          if (MST_GetMode()) {
+            return &error;
+          } else {
+            exit(-1);
+          }
         }
         if (expr->Operands[0]->Type == nMST_Task) {
           MST_Object* ret = SolveMST_Task((MST_Task*)expr->Operands[0], expr->nOperand - 1, expr->Operands+1);
@@ -99,16 +156,27 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
           return ret;
         } else {
           cout << "invalid expression" << endl;
-          exit(-1);
+          if (MST_GetMode()) {
+            return &error;
+          } else {
+            exit(-1);
+          }
         }
       }
     }
     return obj;
   } else if (obj->Type == MST_SymbolReference) {
     MST_Sym* sym = MST_GetSym(obj);
+    if (sym->Object.Type == MST_Error) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
     FreeMST_Object(obj);
-    if (sym->Val->Type == MST_SVLogic || sym->Val->Type == MST_Value) {
-      return sym->Val;
+    if (sym->Val->Type == MST_SVLogic || sym->Val->Type == MST_Value || sym->Val->Type == MST_List) {
+      return CopyMST_Object(sym->Val);
     }
     return (MST_Object*)sym;
   } else if (obj->Type == MST_List) {
@@ -116,10 +184,24 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
     for (int i = 0; i < lst->nItems; i++) {
       if (lst->Items[i]) {
         lst->Items[i] = SolveMST_Object(lst->Items[i], at);
+        if (lst->Items[i]->Type == MST_Error) {
+          if (MST_GetMode()) {
+            return &error;
+          } else {
+            exit(-1);
+          }
+        }
         if (lst->Items[i]->Type == MST_Symbol) {
           MST_Sym* sym = (MST_Sym*)lst->Items[i];
           if (sym->Val && sym->Val->Type == MST_Value) {
             lst->Items[i] = CopyMST_Object(sym->Val);
+            if (lst->Items[i]->Type == MST_Error) {
+              if (MST_GetMode()) {
+                return &error;
+              } else {
+                exit(-1);
+              }
+            }
           }
         }
       }
@@ -128,15 +210,29 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
   } else if (obj->Type == MST_ObjectReference) {
     MST_ObjRef* ref = (MST_ObjRef*)obj;
     ref->Object.Ptr = SolveMST_Object((MST_Object*)ref->Object.Ptr, at);
-    for (int i = 0; i < ref->nIndex; i++) {
-      if (ref->Index[i]) {
-        ref->Index[i] = SolveMST_Object((MST_Object*)ref->Index[i], at);
-        if (ref->Index[i]->Type == MST_Symbol) {
-          MST_Sym* sym = (MST_Sym*)ref->Index[i];
-          if (sym->Val && sym->Val->Type == MST_Value) {
-            ref->Index[i] = CopyMST_Object(sym->Val);
-          }
+    if (((MST_Object*)ref->Object.Ptr)->Type == MST_Error) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
+    if (ref->Width) {
+      ref->Width = SolveMST_Object(ref->Width, at);
+      if (ref->Width->Type == MST_Error) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
         }
+      }
+    }
+    ref->Index = SolveMST_Object(ref->Index, at);
+    if (ref->Index->Type == MST_Error) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
       }
     }
     return obj;
@@ -167,10 +263,7 @@ MST_SVExpr SVRefMST_Object(MST_Object* obj) {
     MST_SVLog* log = (MST_SVLog*) obj;
     string* name = new string;
     MST_Str* str = log->Name;
-    while (str) {
-      *name += string(str->Data, str->cLen);
-      str = str->Next;
-    }
+    *name = string(str->Data, str->cLen);
     if (log->nScope) {
       *name += "_" + to_string(log->nScope);
     }
@@ -201,22 +294,29 @@ MST_SVExpr SVRefMST_Object(MST_Object* obj) {
       exit(-1);
     }
     MST_SVExpr expr = {{NULL, MST_SVExpression}, NULL, refstr};
-    for (int i = 0; i < ref->nIndex; i++) {
-      MST_SVExpr index = SVRefMST_Object(ref->Index[i]);
-      if (!index.Ref) {
-        cout << "invalid index" << endl;
-        exit(-1);
-      }
-      if (index.Prev) {
-        if (prev) {
-          *prev += *(index.Prev);
-        } else {
-          prev = index.Prev;
-        }
-      }
-      *refstr += "[" + *(index.Ref) + "]";
-      delete index.Ref;
+    MST_SVExpr index = SVRefMST_Object(ref->Index);
+    if (!index.Ref) {
+      cout << "invalid index" << endl;
+      exit(-1);
     }
+    if (index.Prev) {
+      if (prev) {
+        *prev += *(index.Prev);
+      } else {
+        prev = index.Prev;
+      }
+    }
+    if (ref->Width) {
+      int w = GetIntMST_Obj(ref->Width);
+      if (w < 0) {
+        *refstr += "[" + *(index.Ref) + "-:" + to_string(-w) + "]";
+      } else {
+        *refstr += "[" + *(index.Ref) + "+:" + to_string(w) + "]";
+      }
+    } else {
+      *refstr += "[" + *(index.Ref) + "]";
+    }
+    delete index.Ref;
     expr.Prev = prev;
     return expr;
   } else if (obj->Type == MST_Symbol) {
@@ -253,10 +353,7 @@ string SVDecMST_Object(MST_SVLog* obj) {
     ret += w + " ";
   }
   MST_Str* name = obj->Name;
-  while (name) {
-    ret += string(name->Data, name->cLen);
-    name = name->Next;
-  }
+  ret += string(name->Data, name->cLen);
   if (obj->nScope) {
     ret += "_" + to_string(obj->nScope);
   }
@@ -278,18 +375,19 @@ int FreeMST_Object(MST_Object* obj) {
     }
     free(obj);
     return 0;
-  } else if (obj->Type == MST_SVLogic || obj->Type == MST_Function || obj->Type == MST_Symbol || obj->Type == nMST_Task || obj->Type == MST_ExternalFunction) {
+  } else if (obj->Type == MST_SVLogic || obj->Type == MST_Function || obj->Type == MST_Symbol || obj->Type == nMST_Task || obj->Type == MST_ExternalFunction || obj->Type == MST_Error) {
     return 0;
   } else if (obj->Type == MST_ObjectReference) {
+    MST_ObjRef* ref = (MST_ObjRef*)obj;
+    if (ref->Width) FreeMST_Object(ref->Width);
+    FreeMST_Object(ref->Index);
+    FreeMST_Object((MST_Object*)obj->Ptr);
     free(obj);
     return 0;
   } else if (obj->Type == MST_String) {
     MST_Str* str = (MST_Str*)obj;
-    while (str) {
-      MST_Str* fr = str;
-      str = str->Next;
-      free(fr);
-    }
+    free(str->Data);
+    free(obj);
     return 0;
   } else if (obj->Type == MST_SymbolReference) {
     FreeMST_Object((MST_Object*)obj->Ptr);
@@ -302,6 +400,7 @@ int FreeMST_Object(MST_Object* obj) {
         FreeMST_Object(lst->Items[i]);
       }
     }
+    free(lst->Items);
     free(lst);
     return 0;
   } else if (obj->Type == MST_SVExpression) {
@@ -321,6 +420,14 @@ int FreeMST_Object(MST_Object* obj) {
 }
 
 MST_Object* CopyMST_Object(MST_Object* obj) {
+  static MST_Object error = {NULL, MST_Error};
+  if (obj->Type == MST_Error) {
+    if (MST_GetMode()) {
+      return &error;
+    } else {
+      exit(-1);
+    }
+  }
   if (obj->Type == MST_Expression) {
     MST_Expr* src = (MST_Expr*)obj;
     MST_Expr* dst = AllocMST_Expr(src->nOperand);
@@ -328,6 +435,13 @@ MST_Object* CopyMST_Object(MST_Object* obj) {
     for (int i = 0; i < src->nOperand; i++) {
       if (src->Operands[i]) {
         dst->Operands[i] = CopyMST_Object(src->Operands[i]);
+        if (dst->Operands[i]->Type == MST_Error) {
+          if (MST_GetMode()) {
+            return &error;
+          } else {
+            exit(-1);
+          }
+        }
       } else {
         dst->Operands[i] = NULL;
       }
@@ -360,32 +474,23 @@ MST_Object* CopyMST_Object(MST_Object* obj) {
     }
     dst->Type = MST_SymbolReference;
     dst->Ptr = CopyMST_Object((MST_Object*)obj->Ptr);
+    if ((((MST_Object*)dst->Ptr))->Type == MST_Error) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
     return dst;
   } else if (obj->Type == MST_String) {
-    int size = 0;
-    MST_Str* str = (MST_Str*)obj;
-    while (str) {
-      size += str->cLen;
-      str = str->Next;
-    }
-    MST_Str* dst = (MST_Str*)malloc(sizeof(MST_Str)+size+1);
+    MST_Str* src = (MST_Str*)obj;
+    MST_Str* dst = AllocMST_Str(src->cLen);
     if (dst == NULL) {
       cout << "alloc error" << endl;
       exit(-1);
     }
-    dst->Object.Type = MST_String;
-    dst->Object.Ptr = dst;
-    dst->mLen = size+1;
-    dst->cLen = size;
-    dst->Next = NULL;
-    char* s = dst->Data;
-    str = (MST_Str*)obj;
-    while (str) {
-      memcpy(s, str->Data, str->cLen);
-      s += str->cLen;
-      str = str->Next;
-    }
-    s[0] = 0;
+    memcpy(dst->Data, src->Data, src->cLen);
+    dst->Data[src->cLen] = 0;
     return (MST_Object*)dst;
   } else if (obj->Type == MST_List) {
     MST_Lst* src = (MST_Lst*)obj;
@@ -393,6 +498,13 @@ MST_Object* CopyMST_Object(MST_Object* obj) {
     for (int i = 0; i < src->nItems; i++) {
       if (src->Items[i]) {
         dst->Items[i] = CopyMST_Object(src->Items[i]);
+        if (dst->Items[i]->Type == MST_Error) {
+          if (MST_GetMode()) {
+            return &error;
+          } else {
+            exit(-1);
+          }
+        }
       } else {
         dst->Items[i] = NULL;
       }
@@ -400,10 +512,34 @@ MST_Object* CopyMST_Object(MST_Object* obj) {
     return (MST_Object*)dst;
   } else if (obj->Type == MST_ObjectReference) {
     MST_ObjRef* src = (MST_ObjRef*)obj;
-    MST_ObjRef* dst = AllocMST_ObjRef(src->nIndex);
+    MST_ObjRef* dst = AllocMST_ObjRef();
     dst->Object.Ptr = CopyMST_Object((MST_Object*)obj->Ptr);
-    for (int i = 0; i < src->nIndex; i++) {
-      dst->Index[i] = CopyMST_Object(src->Index[i]);
+    if (((MST_Object*)dst->Object.Ptr)->Type == MST_Error) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
+    if (src->Width) {
+      dst->Width = CopyMST_Object(src->Width);
+      if (dst->Width->Type == MST_Error) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
+    } else {
+      dst->Width = NULL;
+    }
+    dst->Index = CopyMST_Object(src->Index);
+    if (dst->Index->Type == MST_Error) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     return (MST_Object*)dst;
   } else if (obj->Type == MST_SVExpression) {
@@ -426,18 +562,21 @@ MST_Object* CopyMST_Object(MST_Object* obj) {
     return (MST_Object*)dst;
   } else {
     cout << "error" << endl;
-    exit(-1);
+    if (MST_GetMode()) {
+      return &error;
+    } else {
+      exit(-1);
+    }
   }
 }
 
 MST_Str* AllocMST_Str(int l) {
-  MST_Str* str = (MST_Str*)malloc(sizeof(MST_Str)+l+1);
+  MST_Str* str = (MST_Str*)malloc(sizeof(MST_Str));
   str->Object.Type = MST_String;
   str->Object.Ptr = str;
   str->cLen = l;
   str->mLen = l+1;
-  str->Data[0] = 0;
-  str->Next = NULL;
+  str->Data = (char*)malloc(l+1);
   return str;
 }
 
@@ -489,14 +628,98 @@ MST_Object* AllocMST_Array(int w, vector<int> dim) {
   return (MST_Object*)val;
 }
 
+MST_ObjRef* AllocMST_ObjRef() {
+  MST_ObjRef* ref = (MST_ObjRef*)malloc(sizeof(MST_ObjRef));
+  if (ref == NULL) {
+    cout << "alloc error" << endl;
+    exit(-1);
+  }
+  ref->Object.Type = MST_ObjectReference;
+  ref->Width = NULL;
+  ref->Index = NULL;
+  return ref;
+}
+
+MST_Lst* AllocMST_Lst(int n) {
+  MST_Lst* lst = (MST_Lst*)malloc(sizeof(MST_Lst));
+  if (lst == NULL) {
+    cout << "alloc error" << endl;
+    exit(-1);
+  }
+  lst->Object.Type = MST_List;
+  lst->Object.Ptr = lst;
+  lst->nItems = n;
+  lst->mItems = n;
+  lst->Items = (MST_Object**)malloc(n*sizeof(MST_Object*));
+  return lst;
+}
+
+MST_Object* Push_MST_Lst(int nargs, MST_Object** args) {
+  static MST_Object error = {NULL, MST_Error};
+  if (nargs < 2 || args[0]->Type != MST_List) {
+    cout << "error" << endl;
+    if (MST_GetMode()) {
+      return &error;
+    } else {
+      exit(-1);
+    }
+  }
+  MST_Lst* lst = (MST_Lst*)args[0];
+  if (lst->nItems + nargs-1 > lst->mItems) {
+    MST_Object** items = (MST_Object**)malloc((lst->nItems + nargs+4)*sizeof(MST_Object*));
+    if (!items) {
+      cout << "alloc error" << endl;
+      exit(-1);
+    }
+    for (int i = 0; i < lst->nItems; i++) {
+      items[i] = lst->Items[i];
+    }
+    free(lst->Items);
+    lst->mItems = lst->nItems + nargs+4;
+    lst->Items = items;
+  }
+  for (int i = 0; i < nargs-1; i++) {
+    lst->Items[i+lst->nItems] = CopyMST_Object(args[i+1]);
+  }
+  lst->nItems = lst->nItems + nargs-1;
+  return NULL;
+}
+
+MST_Func* AllocMST_Func(int nargs, int nexpr) {
+  MST_Func* func = (MST_Func*)malloc(sizeof(MST_Func)+4*nexpr);
+  if (func == NULL) {
+    cout << "alloc error" << endl;
+    exit(-1);
+  }
+  func->Object.Type = MST_Function;
+  func->Object.Ptr = func;
+  func->Args = AllocMST_Lst(nargs*2);
+  func->nExpr = nexpr;
+  func->Name = NULL;
+  return func;
+}
+
 int GetIntMST_Obj(MST_Object* obj) {
+  if (obj->Type == MST_Error) {
+    if (MST_GetMode()) {
+      MST_SetErrorFlag(1);
+      return 0;
+    } else {
+      exit(-1);
+    }
+  }
   int w;
   void* ptr;
   if (obj->Type == MST_Value) {
     MST_Val* val = (MST_Val*)obj;
     if (val->nDim || val->ItemWidth > 32) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        MST_SetErrorFlag(1);
+        return 0;
+      } else {
+        exit(-1);
+      }
     }
     if (val->ItemWidth == 32) {
       return *(int*)(obj->Ptr);
@@ -514,7 +737,12 @@ int GetIntMST_Obj(MST_Object* obj) {
     MST_SVLog* log = (MST_SVLog*)obj;
     if (log->nDim || log->ItemWidth > 32) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        MST_SetErrorFlag(1);
+        return 0;
+      } else {
+        exit(-1);
+      }
     }
     int bw = log->ItemWidth >> 3;
     if (log->ItemWidth & 7) bw++;
@@ -537,6 +765,14 @@ int GetIntMST_Obj(MST_Object* obj) {
     MST_ObjRef* ref = (MST_ObjRef*)obj;
     MST_MemRef mref = MST_GetMemRef(ref);
     uint8_t* ptr = mref.ptr;
+    if (!ptr) {
+      if (MST_GetMode()) {
+        MST_SetErrorFlag(1);
+        return 0;
+      } else {
+        exit(-1);
+      }
+    }
     if (mref.wid) {
       int n = ptr[0] >> mref.boff;
       int w = mref.wid + mref.boff - 8;
@@ -556,19 +792,34 @@ int GetIntMST_Obj(MST_Object* obj) {
     return GetIntMST_Obj(MST_GetSymVal(obj));
   } else if (obj->Type == MST_Expression) {
     MST_Object* val = EvalMST_Expr((MST_Expr*)obj, 1);
-    if (!val) {
+    if (!val || val->Type == MST_Error) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        MST_SetErrorFlag(1);
+        return 0;
+      } else {
+        exit(-1);
+      }
     }
     int n = GetIntMST_Obj(val);
     FreeMST_Object(val);
     return n;
   } else {
     cout << "error" << endl;
-    exit(-1);
+    if (MST_GetMode()) {
+      MST_SetErrorFlag(1);
+      return 0;
+    } else {
+      exit(-1);
+    }
   }
   if (!ptr) {
-    exit(-1);
+    if (MST_GetMode()) {
+      MST_SetErrorFlag(1);
+      return 0;
+    } else {
+      exit(-1);
+    }
   }
   int n = *((int*)ptr);
   n &= -1 >> (32 - w);
@@ -807,78 +1058,190 @@ MST_Object* MST_Expr2(enum MST_Operator oprt, MST_Object* oprd1, MST_Object* opr
   return (MST_Object*)expr;
 }
 
+MST_Object* EvalMST_Object(MST_Object* obj, int sim) {
+  static MST_Object error = {NULL, MST_Error};
+
+  if (obj->Type == MST_Expression) {
+    return EvalMST_Expr((MST_Expr*)obj, sim);
+  } else if (obj->Type == MST_SymbolReference) {
+    return CopyMST_Object(MST_GetSymVal(obj));
+  } else if (obj->Type == MST_List) {
+    MST_Lst* lst = (MST_Lst*)obj;
+    MST_Lst* ret = AllocMST_Lst(lst->nItems);
+    for (int i = 0; i < lst->nItems; i++) {
+      ret->Items[i] = EvalMST_Object(lst->Items[i], sim);
+    }
+    return (MST_Object*)ret;
+  } else {
+    return CopyMST_Object(obj);
+  }
+}
+
 MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
+  static MST_Object error = {NULL, MST_Error};
+
   if (expr->Operator == MST_AddTrgTask) {
     if (expr->nOperand < 1 || expr->Operands[0]->Type != MST_List) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     MST_TrgTask* trg = AddTrgTask(expr->nOperand-1);
     MST_Lst* trglst = (MST_Lst*)expr->Operands[0];
     for (int i = 0; i < trglst->nItems; i++) {
       if (trglst->Items[i]->Type != MST_List) {
         cout << "error " << endl;
-        exit(-1);
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
       }
       MST_Lst* t = (MST_Lst*)trglst->Items[i];
       if (t->nItems != 2) {
         cout << "error" << endl;
-        exit(-1);
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
       }
+      MST_SetErrorFlag(0);
       AddTrgMST_TrgTask(trg, (enum MST_Edge)GetIntMST_Obj(t->Items[0]), t->Items[1]);
+      if (MST_GetErrorFlag()) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
     }
     for (int i = 1; i < expr->nOperand; i++) {
       trg->Expr[i-1] = (MST_Expr*)SolveMST_Object(CopyMST_Object(expr->Operands[i]), 1);
+      if (trg->Expr[i-1]->Object.Type == MST_Error) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
     }
     trg->nExpr = expr->nOperand-1;
     return NULL;
   } else if (expr->Operator == MST_NewFunc) {
     if (expr->nOperand < 2) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     if (expr->Operands[0]->Type != MST_SymbolReference || expr->Operands[1]->Type != MST_List) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     MST_Lst* arg = (MST_Lst*)expr->Operands[1];
     MST_Func* func = AddMST_Function(expr->Operands[0], arg->nItems, expr->nOperand-2);
     for (int i = 0; i < expr->nOperand-2; i++) {
       func->Expr[i] = (MST_Expr*)CopyMST_Object(expr->Operands[i+2]);
+      if (func->Expr[i]->Object.Type == MST_Error) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
     }
     MST_TransArglst(func->Args, (MST_Lst*)expr->Operands[1]);
     return (MST_Object*)func;
   } else if (expr->Operator == MST_NewTask) {
     if (expr->nOperand < 2) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     if (expr->Operands[0]->Type != MST_SymbolReference || expr->Operands[1]->Type != MST_List) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     MST_Lst* arg = (MST_Lst*)expr->Operands[1];
+    MST_SetErrorFlag(0);
     MST_Task* task = AddMST_Task(expr->Operands[0], arg->nItems, expr->nOperand-2);
+    if (MST_GetErrorFlag()) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
     for (int i = 0; i < expr->nOperand-2; i++) {
       task->Expr[i] = (MST_Expr*)CopyMST_Object(expr->Operands[i+2]);
+      if (task->Expr[i]->Object.Type == MST_Error) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
     }
     MST_TransArglst(task->Args, arg);
     return (MST_Object*)task;
   } else if (expr->Operator == MST_If) {
     if (expr->nOperand < 2 || expr->nOperand > 3) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     int f = 0;
     MST_Object* cond = expr->Operands[0];
     if (cond->Type == MST_Expression) {
       cond = EvalMST_Expr((MST_Expr*)cond, sim);
+      if (cond->Type == MST_Error) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
       f = 1;
     } else if (cond->Type == MST_Symbol == cond->Type == MST_SymbolReference) {
       cond = MST_GetSymVal(cond);
+      if (cond->Type == MST_Error) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
       f = 1;
     }
+    MST_SetErrorFlag(0);
     int c = GetIntMST_Obj(cond);
+    if (MST_GetErrorFlag()) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
     if (f) FreeMST_Object(cond);
     if (c) {
       if (expr->Operands[1]->Type == MST_Expression) {
@@ -891,11 +1254,22 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
           ret = NULL;
           if (lst->Items[i] && lst->Items[i]->Type == MST_Expression)
             ret = EvalMST_Expr((MST_Expr*)lst->Items[i], sim);
+          if (ret && ret->Type == MST_Error) {
+            if (MST_GetMode()) {
+              return &error;
+            } else {
+              exit(-1);
+            }
+          }
         }
         return ret;
       } else {
         cout << "error" << endl;
-        exit(-1);
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
       }
     } else {
       if (expr->Operands[2]->Type == MST_Expression) {
@@ -908,11 +1282,22 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
           ret = NULL;
           if (lst->Items[i] && lst->Items[i]->Type == MST_Expression)
             ret = EvalMST_Expr((MST_Expr*)lst->Items[i], sim);
+          if (ret && ret->Type == MST_Error) {
+            if (MST_GetMode()) {
+              return &error;
+            } else {
+              exit(-1);
+            }
+          }
         }
         return ret;
       } else {
         cout << "error" << endl;
-        exit(-1);
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
       }
     }
   } else if (expr->Operator == MST_Progn) {
@@ -922,22 +1307,49 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       ret = NULL;
       if (expr->Operands[i] && expr->Operands[i]->Type == MST_Expression)
         ret = EvalMST_Expr((MST_Expr*)expr->Operands[i], sim);
+      if (ret && ret->Type == MST_Error) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
     }
     return ret;
   } else if (expr->Operator == MST_For) {
     if (expr->nOperand < 2) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     if (expr->Operands[0]->Type != MST_SymbolReference) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     if (expr->Operands[1]->Type != MST_Value) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
+    MST_SetErrorFlag(0);
     int n = GetIntMST_Obj(expr->Operands[1]);
+    if (MST_GetErrorFlag()) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
     MST_Object* val = AllocMST_Val(32);
     *((int*)val->Ptr) = 0;
     MST_Sym* cnt = MST_AddSpecialSym(expr->Operands[0], val);
@@ -948,6 +1360,13 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
         ret = NULL;
         if (expr->Operands[j+2] && expr->Operands[j+2]->Type == MST_Expression)
           ret = EvalMST_Expr((MST_Expr*)expr->Operands[j+2], sim);
+        if (ret && ret->Type == MST_Error) {
+          if (MST_GetMode()) {
+            return &error;
+          } else {
+            exit(-1);
+          }
+        }
       }
       *((int*)val->Ptr) = i+1;
       MST_BindSym((MST_Object*)cnt, val);
@@ -957,44 +1376,34 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     return ret;
   }
 
-  MST_Object** nobj = (MST_Object**)malloc(sizeof(MST_Object*) * expr->nOperand);
-  MST_Object** oprd = (MST_Object**)malloc(sizeof(MST_Object*) * expr->nOperand);
-  if (nobj == NULL || oprd == NULL) {
-    cout << "alloc error" << endl;
-    exit(-1);
-  }
-  for (int i = 0; i < expr->nOperand; i++) {
-    if (expr->Operands[i]->Type == MST_Expression) {
-      nobj[i] = EvalMST_Expr((MST_Expr*)expr->Operands[i], sim);
-      oprd[i] = nobj[i];
-    } else if ((expr->Operands[i]->Type == MST_SymbolReference || expr->Operands[i]->Type == MST_Symbol)
-                && !(expr->Operator == MST_Bind && i == 0)) {
-      nobj[i] = MST_GetSymVal(expr->Operands[i]);
-      oprd[i] = nobj[i];
-    } else if (expr->Operands[i]->Type == MST_ObjectReference) {
-      nobj[i] = SolveMST_Object(CopyMST_Object(expr->Operands[i]), 0);
-      oprd[i] = nobj[i];
-    } else {
-      nobj[i] = NULL;
-      oprd[i] = expr->Operands[i];
-    }
-  }
   MST_Object* ret = NULL;
   if (expr->Operator == MST_NewObj) {
     MST_SVLog* log = MST_AddObject(expr->nOperand ? expr->nOperand-1 : 0);
-    int w = expr->nOperand ? GetIntMST_Obj(oprd[0]) : 1;
+    int w = expr->nOperand ? GetIntMST_Obj(expr->Operands[0]) : 1;
     log->ItemWidth = w;
     int size = w >> 3;
     if (size & 7) size++;
     for (int i = 1; i < expr->nOperand; i++) {
-      int n = GetIntMST_Obj(oprd[i]);
+      MST_SetErrorFlag(0);
+      int n = GetIntMST_Obj(expr->Operands[i]);
+      if (MST_GetErrorFlag()) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
       log->nItems[i-1] = n;
       size *= n;
     }
     void* ptr = malloc(size);
     if (ptr == NULL) {
       cout << "alloc error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     log->Wire = ptr;
     memset(ptr, 0, size);
@@ -1002,40 +1411,62 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     ptr = malloc(size);
     if (ptr == NULL) {
       cout << "alloc error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     log->Reg = ptr;
     memset(ptr, 0, size);
     ret = (MST_Object*)log;
   } else if (expr->Operator == MST_Bind) {
-    MST_BindSym(oprd[0], oprd[1]);
-    if (nobj[0]) {
-      ret = nobj[0];
-      nobj[0] = NULL;
-    } else {
-      ret = CopyMST_Object(oprd[0]);
-    }
+    MST_BindSym(expr->Operands[0], EvalMST_Object(expr->Operands[1], sim));
+    ret = CopyMST_Object(expr->Operands[0]);
   } else if (expr->Operator == MST_NewPort) {
     if (expr->nOperand < 1) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     MST_SVLog* log = MST_AddObject(expr->nOperand > 1 ? expr->nOperand-2 : 0);
-
-    int w = expr->nOperand > 1 ? GetIntMST_Obj(oprd[1]) : 1;
-    log->IO = (enum MST_IOType)GetIntMST_Obj(oprd[0]);
+    MST_SetErrorFlag(0);
+    log->IO = (enum MST_IOType)GetIntMST_Obj(expr->Operands[0]);
+    int w = expr->nOperand > 1 ? GetIntMST_Obj(expr->Operands[1]) : 1;
+    if (MST_GetErrorFlag()) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
     log->ItemWidth = w;
     int size = w >> 3;
     if (w & 7) size++;
     for (int i = 2; i < expr->nOperand; i++) {
-      int n = GetIntMST_Obj(oprd[i]);
+      MST_SetErrorFlag(0);
+      int n = GetIntMST_Obj(expr->Operands[i]);
+      if (MST_GetErrorFlag()) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
       log->nItems[i-2] = n;
       size *= n;
     }
     void* ptr = malloc(size);
     if (ptr == NULL) {
       cout << "alloc error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     log->Wire = ptr;
     memset(ptr, 0, size);
@@ -1043,7 +1474,11 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     ptr = malloc(size);
     if (ptr == NULL) {
       cout << "alloc error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     log->Reg = ptr;
     memset(ptr, 0, size);
@@ -1051,90 +1486,239 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
   } else if (expr->Operator == MST_Call) {
     if (expr->nOperand < 1) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
-    if (oprd[0]->Type == MST_Function) {
-      ret = CallMST_Func((MST_Func*)oprd[0], expr->nOperand-1, oprd+1);
-    } else if (oprd[0]->Type == nMST_Task) {
+    MST_Object* func;
+    if (expr->Operands[0]->Type == MST_SymbolReference) {
+      func = MST_GetSymVal(expr->Operands[0]);
+    } else {
+      func = expr->Operands[0];
+    }
+    if (func->Type == MST_Function) {
+      ret = CallMST_Func((MST_Func*)func, expr->nOperand-1, expr->Operands+1);
+    } else if (func->Type == nMST_Task) {
       cout << "error" << endl;
-      exit(-1);
-    } else if (oprd[0]->Type == MST_ExternalFunction) {
-      MST_ExFunc* func = (MST_ExFunc*)oprd[0];
-      ret = func->pFunc(expr->nOperand-1, oprd+1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    } else if (func->Type == MST_ExternalFunction) {
+      MST_ExFunc* xfunc = (MST_ExFunc*)func;
+      MST_Object** oprd = (MST_Object**)malloc(expr->nOperand-1);
+      if (!oprd) {
+        cout << "alloc error" << endl;
+        exit(-1);
+      }
+      for (int i = 0; i < expr->nOperand-1; i++) {
+        oprd[i] = EvalMST_Object(expr->Operands[i+1], sim);
+      }
+      ret = xfunc->pFunc(expr->nOperand-1, oprd);
+      for (int i = 0; i < expr->nOperand-1; i++) {
+        FreeMST_Object(oprd[i]);
+      }
     } else {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
+  } else if (expr->Operator == MST_MCall) {
+    if (expr->nOperand < 2) {
+      cout << "error" << endl;
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
+    MST_Object* th;
+    if (expr->Operands[1]->Type == MST_SymbolReference) {
+      th = MST_GetSymVal(expr->Operands[1]);
+    } else {
+      th = expr->Operands[1];
+    }
+    if (th->Type == MST_Error) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
+    MST_Object* func;
+    if (expr->Operands[0]->Type == MST_SymbolReference) {
+      string name;
+      if (th->Type == MST_List) {
+        name = "list.";
+      } else {
+        cout << "error" << endl;
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
+      MST_Str* str = (MST_Str*)expr->Operands[0]->Ptr;
+      name += string(str->Data, str->cLen);
+      str = AllocMST_Str(name.size());
+      strcpy(str->Data, name.c_str());
+      MST_Object sym;
+      sym.Ptr = str;
+      sym.Type = MST_SymbolReference;
+      func = MST_GetSymVal(&sym);
+      FreeMST_Object((MST_Object*)str);
+    } else {
+      func = expr->Operands[0];
+    }
+    if (func->Type == MST_Error) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
+    if (func->Type == MST_ExternalFunction) {
+      MST_ExFunc* xfunc = (MST_ExFunc*)func;
+      MST_Object** oprd = (MST_Object**)malloc(expr->nOperand-2);
+      if (!oprd) {
+        cout << "alloc error" << endl;
+        exit(-1);
+      }
+      oprd[0] = th;
+      for (int i = 0; i < expr->nOperand-2; i++) {
+        oprd[i+1] = EvalMST_Object(expr->Operands[i+2], sim);
+      }
+      ret = xfunc->pFunc(expr->nOperand-1, oprd);
+      for (int i = 0; i < expr->nOperand-2; i++) {
+        FreeMST_Object(oprd[i+1]);
+      }
     }
   } else if (expr->Operator == MST_GetInt) {
     if (expr->nOperand != 1) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
     ret = AllocMST_Val(32);
     int* ptr = (int*)ret->Ptr;
-    *ptr = GetIntMST_Obj(oprd[0]);
+    MST_SetErrorFlag(0);
+    *ptr = GetIntMST_Obj(expr->Operands[0]);
+    if (MST_GetErrorFlag()) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
   } else if (expr->nOperand == 2) {
-    int n = GetIntMST_Obj(oprd[1]);
     if (expr->Operator == MST_Set) {
-      n = MST_SetInt(oprd[0], n);
+      int n = GetIntMST_Obj(expr->Operands[1]);
+      MST_SetErrorFlag(0);
+      n = MST_SetInt(expr->Operands[0], n);
+      if (MST_GetErrorFlag()) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
       ret = AllocMST_Val(32);
       int* ptr = (int*)ret->Ptr;
       *ptr = n;
     } else {
-      if ((expr->Operands[0]->Type == MST_Value && expr->Operands[1]->Type == MST_Value) || sim) {
-        int op1 = GetIntMST_Obj(oprd[0]), op2 = GetIntMST_Obj(oprd[1]);
+      MST_Object* oprd1 = EvalMST_Object(expr->Operands[0], sim);
+      if (oprd1->Type == MST_Error) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
+      MST_Object* oprd2 = EvalMST_Object(expr->Operands[1], sim);
+      if (oprd2->Type == MST_Error) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
+      if ((oprd1->Type == MST_Value && oprd2->Type == MST_Value) || sim) {
+        MST_SetErrorFlag(0);
+        int op1 = GetIntMST_Obj(oprd1), op2 = GetIntMST_Obj(oprd2);
+        if (MST_GetErrorFlag()) {
+          if (MST_GetMode()) {
+            return &error;
+          } else {
+            exit(-1);
+          }
+        }
         ret = AllocMST_Val(32);
         int* ptr = (int*)ret->Ptr;
         *ptr = MSTOprt_2Arg(expr->Operator, op1, op2);
+        FreeMST_Object(oprd1);
+        FreeMST_Object(oprd2);
       } else {
         MST_Expr* ex = AllocMST_Expr(2);
         ex->Operator = expr->Operator;
-        if (nobj[0]) {
-          ex->Operands[0] = nobj[0];
-          nobj[0] = NULL;
-        } else {
-          ex->Operands[0] = CopyMST_Object(oprd[0]);
-        }
-        if (nobj[1]) {
-          ex->Operands[1] = nobj[1];
-          nobj[1] = NULL;
-        } else {
-          ex->Operands[1] = CopyMST_Object(oprd[1]);
-        }
+        ex->Operands[0] = oprd1;
+        ex->Operands[1] = oprd2;
         ret = (MST_Object*)ex;
       }
     }
   } else if (expr->nOperand == 1) {
+    MST_Object* oprd1 = EvalMST_Object(expr->Operands[0], sim);
+    if (oprd1->Type == MST_Error) {
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
     if (expr->Operands[0]->Type == MST_Value || sim) {
-      int op1 = GetIntMST_Obj(oprd[0]);
+      MST_SetErrorFlag(0);
+      int op1 = GetIntMST_Obj(oprd1);
+      if (MST_GetErrorFlag()) {
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
       ret = AllocMST_Val(32);
       int* ptr = (int*)ret->Ptr;
       *ptr = MSTOprt_1Arg(expr->Operator, op1);
+      FreeMST_Object(oprd1);
     } else if (expr->Operator == MST_BNot || expr->Operator == MST_LNot) {
       MST_Expr* ex = AllocMST_Expr(1);
       ex->Operator = expr->Operator;
-      if (nobj[0]) {
-        ex->Operands[0] = nobj[0];
-        nobj[0] = NULL;
-      } else {
-        ex->Operands[0] = CopyMST_Object(oprd[0]);
-      }
+      ex->Operands[0] = oprd1;
       ret = (MST_Object*)ex;
     } else {
       cout << "EvalMST_Expr: Invalid expression" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
     }
   } else {
     cout << "EvalMST_Expr: Invalid expression" << endl;
-    exit(-1);
-  }
-  for (int i = 0; i < expr->nOperand; i++) {
-    if (nobj[i]) {
-      FreeMST_Object(nobj[i]);
+    if (MST_GetMode()) {
+      return &error;
+    } else {
+      exit(-1);
     }
   }
-  free(nobj);
-  free(oprd);
+
   return ret;
 }
 
@@ -1142,14 +1726,53 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
   vector<int> index = {};
   MST_Object* obj = NULL;
   while (ref) {
-    for (int i = 0; i < ref->nIndex; i++) {
-      index.push_back(GetIntMST_Obj(ref->Index[i]));
+    MST_SetErrorFlag(0);
+    index.push_back(GetIntMST_Obj(ref->Index));
+    if (MST_GetErrorFlag()) {
+      if (MST_GetMode()) {
+        return {NULL};
+      } else {
+        exit(-1);
+      }
     }
     obj = (MST_Object*)ref->Object.Ptr;
+    if (obj->Type == MST_SymbolReference) {
+      obj = MST_GetSymVal(obj);
+    }
     if (obj->Type == MST_ObjectReference) {
+      if (ref->Width) {
+        cout << "invalid index" << endl;
+        if (MST_GetMode()) {
+          return {NULL};
+        } else {
+          exit(-1);
+        }
+      }
       ref = (MST_ObjRef*)obj;
     } else {
       break;
+    }
+  }
+  if (obj->Type == MST_List) {
+    MST_Lst* lst = (MST_Lst*)obj;
+    for (int i = 0; i < index.size(); i++) {
+      if (lst->nItems <= index[i]) {
+        cout << "invalid index" << endl;
+        if (MST_GetMode()) {
+          return {NULL};
+        } else {
+          exit(-1);
+        }
+      }
+      obj = lst->Items[index[i]];
+      if (obj->Type != MST_List) {
+        vector<int> idx = {};
+        for (int j = i+1; j < index.size(); j++) {
+          idx.push_back(index[j]);
+        }
+        index = idx;
+        break;
+      }
     }
   }
   uint8_t* ptr = NULL;
@@ -1170,44 +1793,121 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     ptr = (uint8_t*)val->Object.Ptr;
   } else {
     cout << "invalid index" << endl;
-    exit(-1);
+    if (MST_GetMode()) {
+      return {NULL};
+    } else {
+      exit(-1);
+    }
+  }
+  if (index.size() == 0) {
+    if (ndim) {
+      cout << "invalid index" << endl;
+      if (MST_GetMode()) {
+        return {NULL};
+      } else {
+        exit(-1);
+      }
+    }
+    return {obj, ptr, 0, iw};
   }
   int b = (index.size() == ndim+1);
   if (b && index[0] >= iw) {
     cout << "invalid index" << endl;
-    exit(-1);
+    if (MST_GetMode()) {
+      return {NULL};
+    } else {
+      exit(-1);
+    }
+  }
+  if (!b && ref->Width) {
+    cout << "invalid index" << endl;
+    if (MST_GetMode()) {
+      return {NULL};
+    } else {
+      exit(-1);
+    }
   }
   int s = iw >> 3;
   if (iw & 7) s++;
   int size = s;
   int off = 0;
   for (int i = 0; i < ndim; i++) {
-    cout << ndim-i-b-1  << endl;
     if (nitems[i] <= index[ndim-i-b-1]) {
       cout << "index exceeds the size" << endl;
-      exit(-1);
+      if (MST_GetErrorFlag()) {
+        if (MST_GetMode()) {
+          return {NULL};
+        } else {
+          exit(-1);
+        }
+      }
     }
     off += size * index[ndim-i-b-1];
     size *= nitems[i];
   }
   ptr += off;
   if (b) ptr += index[0] >> 3;
-  return {obj, ptr, b ? index[0] & 7 : 0, b ? 1 : iw};
+  if (ref->Width) {
+    MST_SetErrorFlag(0);
+    int w = GetIntMST_Obj(ref->Width);
+    if (MST_GetErrorFlag()) {
+      if (MST_GetMode()) {
+        return {NULL};
+      } else {
+        exit(-1);
+      }
+    }
+    if (w == 0) {
+      cout << "invalid index" << endl;
+      if (MST_GetMode()) {
+        return {NULL};
+      } else {
+        exit(-1);
+      }
+    }
+    int boff = index[0] & 7;
+    if (w < 0) {
+      boff += w;
+      w = -w;
+    }
+    if (boff >= 8) {
+      ptr += boff >> 3;
+      boff &= 7;
+    } else if (boff < 0){
+      ptr -= -boff >> 3;
+      boff = (8-boff)&7;
+    }
+    return {obj, ptr, boff, w > 0 ? w : -w};
+  } else{
+    return {obj, ptr, b ? index[0] & 7 : 0, b ? 1 : iw};
+  }
 }
 
 int MST_SetInt(MST_Object* obj, int n) {
+  if (obj->Type == MST_SymbolReference) {
+    obj = MST_GetSymVal(obj);
+  }
   if (obj->Type == MST_SVLogic) {
     MST_SVLog* log = (MST_SVLog*)obj;
     if (log->nDim || log->ItemWidth > 32) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        MST_SetErrorFlag(1);
+        return -1;
+      } else {
+        exit(-1);
+      }
     }
     MST_NotifyChange(log);
     if (log->ItemWidth == 32) {
       int* ptr = (int*)log->Wire;
       if (!ptr) {
         cout << "error" << endl;
-        exit(-1);
+        if (MST_GetMode()) {
+          return -1;
+        } else {
+          exit(-1);
+        }
       }
       *ptr = n;
       return n;
@@ -1219,7 +1919,12 @@ int MST_SetInt(MST_Object* obj, int n) {
     uint8_t* ptr = (uint8_t*)log->Wire;
     if (!ptr) {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        MST_SetErrorFlag(1);
+        return -1;
+      } else {
+        exit(-1);
+      }
     }
     for (int i = 0; i < bw; i++) {
       ptr[i] = n >> (i*8);
@@ -1228,6 +1933,14 @@ int MST_SetInt(MST_Object* obj, int n) {
   } else if (obj->Type == MST_ObjectReference) {
     MST_ObjRef* ref = (MST_ObjRef*)obj;
     MST_MemRef mref = MST_GetMemRef(ref);
+    if (!mref.obj) {
+      if (MST_GetMode()) {
+        MST_SetErrorFlag(1);
+        return -1;
+      } else {
+        exit(-1);
+      }
+    }
     if (mref.obj->Type == MST_SVLogic) {
       MST_SVLog* log = (MST_SVLog*)mref.obj;
       MST_NotifyChange(log);
@@ -1259,15 +1972,30 @@ int MST_SetInt(MST_Object* obj, int n) {
         return n;
       } else {
         cout << "error" << endl;
-        exit(-1);
+        if (MST_GetMode()) {
+          MST_SetErrorFlag(1);
+          return -1;
+        } else {
+          exit(-1);
+        }
       }
     } else {
       cout << "error" << endl;
-      exit(-1);
+      if (MST_GetMode()) {
+        MST_SetErrorFlag(1);
+        return -1;
+      } else {
+        exit(-1);
+      }
     }
   } else {
     cout << "error" << endl;
-    exit(-1);
+    if (MST_GetMode()) {
+      MST_SetErrorFlag(1);
+      return -1;
+    } else {
+      exit(-1);
+    }
   }
 }
 
@@ -1325,43 +2053,6 @@ int MSTOprt_2Arg(enum MST_Operator oprt, int oprd1, int oprd2) {
   }
 }
 
-MST_ObjRef* AllocMST_ObjRef(int n) {
-  MST_ObjRef* ref = (MST_ObjRef*)malloc(sizeof(MST_ObjRef)+4*n);
-  if (ref == NULL) {
-    cout << "alloc error" << endl;
-    exit(-1);
-  }
-  ref->Object.Type = MST_ObjectReference;
-  ref->nIndex = n;
-  return ref;
-}
-
-MST_Lst* AllocMST_Lst(int n) {
-  MST_Lst* lst = (MST_Lst*)malloc(sizeof(MST_Lst)+4*n);
-  if (lst == NULL) {
-    cout << "alloc error" << endl;
-    exit(-1);
-  }
-  lst->Object.Type = MST_List;
-  lst->Object.Ptr = lst;
-  lst->nItems = n;
-  return lst;
-}
-
-MST_Func* AllocMST_Func(int nargs, int nexpr) {
-  MST_Func* func = (MST_Func*)malloc(sizeof(MST_Func)+4*nexpr);
-  if (func == NULL) {
-    cout << "alloc error" << endl;
-    exit(-1);
-  }
-  func->Object.Type = MST_Function;
-  func->Object.Ptr = func;
-  func->Args = AllocMST_Lst(nargs*2);
-  func->nExpr = nexpr;
-  func->Name = NULL;
-  return func;
-}
-
 int MST_TransArglst(MST_Lst* dst, MST_Lst* src) {
   for (int i = 0; i < src->nItems; i++) {
     if (src->Items[i]->Type == MST_SymbolReference) {
@@ -1397,9 +2088,9 @@ int MST_BindArgs(MST_Lst* arglst, int nargs, MST_Object** args) {
         cout << "error" << endl;
         exit(-1);
       }
-      MST_BindSym(arglst->Items[i*2], arglst->Items[i*2+1]);
+      MST_BindSym(arglst->Items[i*2], EvalMST_Object(arglst->Items[i*2+1], 0));
     } else {
-      MST_BindSym(arglst->Items[i*2], args[i]);
+      MST_BindSym(arglst->Items[i*2], EvalMST_Object(args[i], 0));
     }
   }
   return 0;
@@ -1454,6 +2145,9 @@ MST_Object* SolveMST_Task(MST_Task* task, int nargs, MST_Object** args) {
   expr->Operator = MST_Progn;
   for (int i = 0; i < task->nExpr; i++) {
     expr->Operands[i] = SolveMST_Object(CopyMST_Object((MST_Object*)task->Expr[i]), 1);
+    if (expr->Operands[i]->Type == MST_Error) {
+      return expr->Operands[i];
+    }
   }
   MST_CloseScope();
   return (MST_Object*)expr;
@@ -1571,6 +2265,9 @@ int EvalMST_TrgTask(MST_TrgTask* task) {
 
 MST_Env::MST_Env() {
   AddScope();
+  Error = 0;
+  Mode = 0;
+  AddExFunc(string("list.push"), Push_MST_Lst);
 }
 
 MST_Env::~MST_Env() {
@@ -1701,7 +2398,9 @@ MST_ExFunc* MST_Env::AddExFunc(string name, MST_Object* (*pfunc)(int nargs, MST_
   func->Name = AllocMST_Str(name.size());
   func->pFunc = pfunc;
   strcpy(func->Name->Data, name.c_str());
-  MST_BindSym((MST_Object*)func->Name, (MST_Object*)func);
+  MST_Object sym = {CopyMST_Object((MST_Object*)func->Name), MST_SymbolReference};
+  Bind(&sym, (MST_Object*)func);
+  FreeMST_Object((MST_Object*)sym.Ptr);
   return func;
 }
 
@@ -1831,21 +2530,14 @@ int MST_Env::WaitTask() {
 }
 
 int MST_Env::Bind(MST_Object* sym, MST_Object* obj) {
-  if (sym->Type == MST_String) {
-    MST_Str* str = (MST_Str*)sym;
-    string name = "";
-    while (str) {
-      name += string(str->Data, str->cLen);
-      str = str->Next;
-    }
+  if (sym->Type == MST_SymbolReference) {
+    MST_Str* str = (MST_Str*)sym->Ptr;
+    string name = string(str->Data, str->cLen);
     MST_Sym* dst = NULL;
     for (int i = 0; i < SpecialSym.back().size(); i++) {
       string name2 = "";
       MST_Str* s = SpecialSym.back()[SpecialSym.back().size()-i-1]->Name;
-      while (s) {
-        name2 += string(s->Data, s->cLen);
-        s = s->Next;
-      }
+      name2 += string(s->Data, s->cLen);
       if (name2 == name) {
         dst = SpecialSym.back()[SpecialSym.back().size()-i-1];
         break;
@@ -1868,25 +2560,22 @@ int MST_Env::Bind(MST_Object* sym, MST_Object* obj) {
         log->Name = ssvname;
       }
     }
-    if (dst) {
-      FreeMST_Object(dst->Val);
-      dst->Val = CopyMST_Object(obj);
-    } else {
-      MST_Sym* s = (MST_Sym*)malloc(sizeof(MST_Sym));
-      if (s == NULL) {
+    if (!dst) {
+      dst = (MST_Sym*)malloc(sizeof(MST_Sym));
+      if (dst == NULL) {
         cout << "alloc error" << endl;
         exit(-1);
       }
-      Symbols.back().push_back(s);
-      Tables.back()->Get(name) = s;
-      s->Name = (MST_Str*)CopyMST_Object(sym);
-      s->Val = CopyMST_Object(obj);
-      s->Object.Ptr = s;
-      s->Object.Type = MST_Symbol;
+      Symbols.back().push_back(dst);
+      Tables.back()->Get(name) = dst;
+      dst->Name = (MST_Str*)CopyMST_Object(sym);
+      dst->Object.Ptr = dst;
+      dst->Object.Type = MST_Symbol;
+    } else {
+      FreeMST_Object(dst->Val);
     }
+    dst->Val = obj;
     return 0;
-  } else if (sym->Type == MST_SymbolReference) {
-    return Bind((MST_Object*)sym->Ptr, obj);
   } else if (sym->Type == MST_Symbol) {
     MST_Sym* s = (MST_Sym*)sym;
     s->Val = CopyMST_Object(obj);
@@ -1898,20 +2587,13 @@ int MST_Env::Bind(MST_Object* sym, MST_Object* obj) {
 }
 
 MST_Sym* MST_Env::GetSym(MST_Object* sym) {
-  if (sym->Type == MST_String) {
-    MST_Str* str = (MST_Str*)sym;
-    string name = "";
-    while (str) {
-      name += string(str->Data, str->cLen) ;
-      str = str->Next;
-    }
+  static MST_Object error = {NULL, MST_Error};
+  if (sym->Type == MST_SymbolReference) {
+    MST_Str* str = (MST_Str*)sym->Ptr;
+    string name = string(str->Data, str->cLen);
     for (int i = 0; i < SpecialSym.back().size(); i++) {
-      string name2 = "";
       MST_Str* s = SpecialSym.back()[SpecialSym.back().size()-i-1]->Name;
-      while (s) {
-        name2 += string(s->Data, s->cLen);
-        s = s->Next;
-      }
+      string name2 = string(s->Data, s->cLen);
       if (name2 == name) {
         return SpecialSym.back()[SpecialSym.back().size()-i-1];
       }
@@ -1923,22 +2605,36 @@ MST_Sym* MST_Env::GetSym(MST_Object* sym) {
       }
     }
     cout << "symbol not bound " << name << endl;
-    exit(-1);
-  } else if (sym->Type == MST_SymbolReference) {
-    return GetSym((MST_Object*)sym->Ptr);
+    if (MST_GetMode()) {
+      return (MST_Sym*)&error;
+    } else {
+      exit(-1);
+    }
   } else if (sym->Type == MST_Symbol) {
     return (MST_Sym*)sym;
   }
   cout << "error" << endl;
-  exit(-1);
+  if (MST_GetMode()) {
+    return (MST_Sym*)&error;
+  } else {
+    exit(-1);
+  }
 }
 
 MST_Object* MST_Env::GetSymVal(MST_Object* sym) {
-  return GetSym(sym)->Val;
+  MST_Sym* s = GetSym(sym);
+  if (s->Object.Type == Error) {
+    if (MST_GetMode()) {
+      return (MST_Object*)s;
+    } else {
+      exit(-1);
+    }
+  }
+  return s->Val;
 }
 
 MST_Sym* MST_Env::AddSpecialSym(MST_Object* sym, MST_Object* val) {
-  if (sym->Type == MST_String) {
+  if (sym->Type == MST_SymbolReference) {
     MST_Sym* s = (MST_Sym*)malloc(sizeof(MST_Sym));
     if (s == NULL) {
       cout << "alloc error" << endl;
@@ -1946,13 +2642,11 @@ MST_Sym* MST_Env::AddSpecialSym(MST_Object* sym, MST_Object* val) {
     }
     Symbols.back().push_back(s);
     SpecialSym.back().push_back(s);
-    s->Name = (MST_Str*)CopyMST_Object(sym);
+    s->Name = (MST_Str*)CopyMST_Object((MST_Object*)sym->Ptr);
     s->Val = CopyMST_Object(val);
     s->Object.Ptr = s;
     s->Object.Type = MST_Symbol;
     return s;
-  } else if (sym->Type == MST_SymbolReference) {
-    return AddSpecialSym((MST_Object*)sym->Ptr, val);
   } else {
     cout << "error" << endl;
     exit(-1);
@@ -2047,6 +2741,25 @@ string MST_Env::SVCode() {
   return ret;
 }
 
+int MST_Env::SetErrorFlag(int f) {
+  Error = f;
+  return 0;
+}
+
+int MST_Env::GetErrorFlag() {
+  return Error;
+}
+
+int MST_Env::SetMode(int m) {
+  Mode = m;
+  return 0;
+}
+
+int MST_Env::GetMode() {
+  return Mode;
+}
+
+
 MST_SVLog* MST_AddObject(int ndim) {
   return mst_env->AddObject(ndim);
 }
@@ -2129,4 +2842,20 @@ int MST_FindSVName(string name) {
 
 int MST_AddArray(MST_Val* array) {
   return mst_env->AddArray(array);
+}
+
+int MST_SetErrorFlag(int f) {
+  return mst_env->SetErrorFlag(f);
+}
+
+int MST_GetErrorFlag() {
+  return mst_env->GetErrorFlag();
+}
+
+int MST_SetMode(int m) {
+  return mst_env->SetMode(m);
+}
+
+int MST_GetMode() {
+  return mst_env->GetMode();
 }

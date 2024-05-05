@@ -13,10 +13,10 @@ enum MSTP_Oprt {
   MSTP_Pow,
   MSTP_BAnd,
   MSTP_BOr,
-  MSTP_BNot,
   MSTP_Xor,
   MSTP_LAnd,
   MSTP_LOr,
+  MSTP_BNot,
   MSTP_LNot,
   MSTP_Equal,
   MSTP_NE,
@@ -40,7 +40,22 @@ enum MSTP_Oprt {
   MSTP_Dollar,
   MSTP_DollarEq,
   MSTP_CurlyBracketL,
-  MSTP_CurlyBracketR
+  MSTP_CurlyBracketR,
+  MSTP_PlusSemicolon,
+  MSTP_MinusSemicolon,
+  MSTP_Piriod,
+  MSTP_Colon,
+
+  MSTP_SetAdd,
+  MSTP_SetSub,
+  MSTP_SetMul,
+  MSTP_SetDiv,
+  MSTP_SetPow,
+  MSTP_SetBAnd,
+  MSTP_SetBOr,
+  MSTP_SetXor,
+  MSTP_SetLAnd,
+  MSTP_SetLOr
 };
 
 enum MSTP_ResWord {
@@ -79,6 +94,9 @@ private:
   vector<MSTP_TokenInfo*> Operators;
   vector<MSTP_TokenInfo*> Words;
 
+  int Error;
+  int Mode;
+
   vector<MST_Object*> Parse2(vector<variant<MSTP_TokenInfo*, MST_Object*>>& list, int mode);
 
 public:
@@ -90,3 +108,6 @@ public:
 
 vector<MST_Object*> MSTP_Parse(char* src);
 vector<MST_Object*> MSTP_Read();
+
+int EnableITP();
+MST_Object* TimingChart(int nargs, MST_Object** args);

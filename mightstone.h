@@ -65,7 +65,8 @@ enum MST_ObjType {
   MST_List,
   MST_Function,
   nMST_Task,
-  MST_ExternalFunction
+  MST_ExternalFunction,
+  MST_Error
 };
 
 struct MST_Object {
@@ -75,10 +76,9 @@ struct MST_Object {
 
 struct MST_Str {
   MST_Object Object;
-  MST_Str* Next;
   int cLen;
   int mLen;
-  char Data[];
+  char* Data;
 };
 
 enum MST_IOType {
@@ -141,10 +141,10 @@ enum MST_Operator {
   MST_Pow,
   MST_BAnd,
   MST_BOr,
-  MST_BNot,
   MST_Xor,
   MST_LAnd,
   MST_LOr,
+  MST_BNot,
   MST_LNot,
   MST_Equal,
   MST_NE,
@@ -164,7 +164,8 @@ enum MST_Operator {
   MST_Progn,
   MST_For,
   MST_NewTask,
-  MST_GetInt
+  MST_GetInt,
+  MST_MCall
 };
 
 struct MST_Expr {
@@ -185,7 +186,6 @@ MST_Object* MST_Expr2(enum MST_Operator oprt, MST_Object* oprd1, MST_Object* opr
 
 int FreeMST_Expr(MST_Expr* expr);
 MST_Object* MST_ObjExpr(MST_Expr* expr);
-
 MST_Object* EvalMST_Expr(MST_Expr* expr, int sim);
 int MSTOprt_1Arg(enum MST_Operator oprt, int oprd);
 int MSTOprt_2Arg(enum MST_Operator oprt, int oprd1, int oprd2);
@@ -201,19 +201,21 @@ struct MST_SVExpr {
 
 struct MST_ObjRef {
   MST_Object Object;
-  int nIndex;
-  MST_Object* Index[];
+  MST_Object* Width;
+  MST_Object* Index;
 };
 
-MST_ObjRef* AllocMST_ObjRef(int n);
+MST_ObjRef* AllocMST_ObjRef();
 
 struct MST_Lst {
   MST_Object Object;
   int nItems;
-  MST_Object* Items[];
+  int mItems;
+  MST_Object** Items;
 };
 
 MST_Lst* AllocMST_Lst(int n);
+MST_Object* Push_MST_Lst(int nargs, MST_Object** args);
 
 int MST_TransArglst(MST_Lst* dst, MST_Lst* src);
 int MST_BindArgs(MST_Lst* arglst, int nargs, MST_Object** args);
@@ -315,6 +317,9 @@ private:
 
   vector<MST_Val*> Arrays;
 
+  int Error;
+  int Mode;
+
 public:
   MST_Env();
   ~MST_Env();
@@ -346,6 +351,12 @@ public:
   int BindSVName(string name, MST_Object* obj);
   int FindSVName(string name);
   int AddArray(MST_Val* array);
+
+  int SetErrorFlag(int f);
+  int GetErrorFlag();
+
+  int SetMode(int m);
+  int GetMode();
 
   string SVCode();
 };
@@ -381,5 +392,11 @@ int MST_BindSVName(string name, MST_Object* obj);
 int MST_FindSVName(string name);
 
 int MST_AddArray(MST_Val* array);
+
+int MST_SetErrorFlag(int f);
+int MST_GetErrorFlag();
+
+int MST_SetMode(int m);
+int MST_GetMode();
 
 #endif

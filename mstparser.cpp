@@ -4,6 +4,7 @@
 #include <vector>
 #include <variant>
 #include <conio.h>
+#include <fstream>
 #include "hashtable.cpp"
 
 using namespace std;
@@ -11,7 +12,7 @@ using namespace std;
 static MST_Parser* mstp = new MST_Parser;
 
 MST_Parser::MST_Parser() {
-  static vector<string> oprt = {"=", "+", "-", "*", "/", "**", "&", "|", "~", "^", "&&", "||", "!", "==", "!=", ">", ">=", "<", "<=", "<<", ">>", "[", "]", "(", ")", " ", "\t", "\n", ":", ",", "0x", "$", "$=", "{", "}"};
+  static vector<string> oprt = {"=", "+", "-", "*", "/", "**", "&", "|", "^", "&&", "||", "~", "!", "==", "!=", ">", ">=", "<", "<=", "<<", ">>", "[", "]", "(", ")", " ", "\t", "\n", ":", ",", "0x", "$", "$=", "{", "}", "+:", "-:", ".", ";", "+=", "-=", "*=", "/=", "**=", "&=", "|=", "^=", "&&=", "||="};
   for (int i = 0; i < oprt.size(); i++) {
     MSTP_TokenInfo* info = new MSTP_TokenInfo;
     OprtTable.Get(oprt[i]) = info;
@@ -36,7 +37,9 @@ MST_Parser::~MST_Parser() {
   for (int i = 0; i < Words.size(); i++) {
     free(Words[i]);
   }
-};
+}
+
+int ErrorFlagMSTP = 0;
 
 vector<MST_Object*> MST_Parser::Parse(char* src) {
   vector<MST_Object*> ret = {};
@@ -149,7 +152,7 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
           MST_Object* val = AllocMST_Val(32);
           if (val == NULL) {
             cout << "alloc error" << endl;
-            exit(-1);
+            return {};
           }
           int* v = (int*)val->Ptr;
           *v = 0;
@@ -157,7 +160,7 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
             *v *= 10;
             if (!('0' <= ptr[k] && ptr[k] <= '9')) {
               cout << "parse error" << endl;
-              exit(-1);
+              return {};
             }
             *v += ptr[k] - '0';
           }
@@ -166,21 +169,16 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
           MST_Object* sym = (MST_Object*)malloc(sizeof(MST_Object));
           if (sym == NULL) {
             cout << "alloc error" << endl;
-            exit(-1);
+            return {};
           }
-          MST_Str* str = (MST_Str*)malloc(sizeof(MST_Str) + tokens[n].Len+1);
+          MST_Str* str = AllocMST_Str(tokens[n].Len);
           if (str == NULL) {
             cout << "alloc error" << endl;
-            exit(-1);
+            return {};
           }
           sym->Type = MST_SymbolReference;
           sym->Ptr = str;
 
-          str->Object.Type = MST_String;
-          str->Object.Ptr = str;
-          str->Next = NULL;
-          str->cLen = tokens[n].Len;
-          str->mLen = tokens[n].Len + 1;
           memcpy(str->Data, tokens[n].Pos, tokens[n].Len);
           str->Data[tokens[n].Len] = 0;
           list.push_back(sym);
@@ -387,7 +385,7 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
     if (fwid == MSTP_At) {
       if (atnest || list.size() == 1) {
         cout << "parse error" << endl;
-        exit(-1);
+        return {};
       }
       atnest = cnest + 1;
       triggers = {};
@@ -403,7 +401,7 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
           if (idop == MSTP_ParenR) {
             if (!parl) {
               cout << "parse error" << endl;
-              exit(-1);
+              return {};
             }
             break;
           } else if (idop == MSTP_Comma) {
@@ -414,14 +412,14 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
           if (idwd == MSTP_Pos || idwd == MSTP_Neg) {
             if (j+1 >= list.size() || list[j+1].index() != 1) {
               cout << "parse error" << endl;
-              exit(-1);
+              return {};
             }
             triggers.push_back({idwd, get<MST_Object*>(list[j+1])});
             j++;
             continue;
           }
           cout << "parse error" << endl;
-          exit(-1);
+          return {};
         } else {
           triggers.push_back({-1, get<MST_Object*>(list[j])});
         }
@@ -430,11 +428,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
     } else if (fwid == MSTP_Defun || fwid == MSTP_Deftask) {
       if (defun || atnest || deftask || ifnest.size()) {
         cout << "parse error" << endl;
-        exit(-1);
+        return {};
       }
       if (list.size() < 4) {
         cout << "parse error" << endl;
-        exit(-1);
+        return {};
       }
       if (fwid == MSTP_Defun) {
         defun = 1;
@@ -445,12 +443,12 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       funcexpr = {};
       if (list[1].index() != 1 || get<MST_Object*>(list[1])->Type != MST_SymbolReference) {
         cout << "parse error" << endl;
-        exit(-1);
+        return {};
       }
       funcname = get<MST_Object*>(list[1]);
       if (list[2].index() != 0 || get<MSTP_TokenInfo*>(list[2])->OprtID != MSTP_ParenL) {
         cout << "parse error" << endl;
-        exit(-1);
+        return {};
       }
       int j;
       for (j = 3; j < list.size(); j++) {
@@ -462,19 +460,19 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
             continue;
           } else {
             cout << "parse error" << endl;
-            exit(-1);
+            return {};
           }
         } else {
           if (get<MST_Object*>(list[j])->Type != MST_SymbolReference) {
             cout << "parse error" << endl;
-            exit(-1);
+            return {};
           }
           funcargs.push_back(get<MST_Object*>(list[j]));
         }
       }
       if (j >= list.size() || list[j].index() != 0 || get<MSTP_TokenInfo*>(list[j])->OprtID != MSTP_ParenR) {
         cout << "parse error" << endl;
-        exit(-1);
+        return {};
       }
       continue;
     } else if (fwid == MSTP_If) {
@@ -495,10 +493,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
         }
         cond.push_back(list[j]);
       }
+      Error = 0;
       vector<MST_Object*> p = Parse2(cond, atnest || deftask);
-      if (p.size() != 1) {
+      if (p.size() != 1 || Error) {
         cout << "parse error" << endl;
-        exit(-1);
+        return {};
       }
       ifcond.push_back({p[0]});
       continue;
@@ -512,7 +511,7 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       if (list[1].index() == 0 && get<MSTP_TokenInfo*>(list[1])->OprtID == MSTP_ParenL) parl = 1;
       if (list[1+parl].index() == 0) {
         cout << "parse error" << endl;
-        exit(-1);
+        return {};
       }
       forcnt.push_back(get<MST_Object*>(list[1+parl]));
       vector<variant<MSTP_TokenInfo*, MST_Object*>> max;
@@ -530,10 +529,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       }
 
       if (max.size()) {
+        Error = 0;
         vector<MST_Object*> p = Parse2(max, atnest || deftask);
-        if (p.size() != 1) {
+        if (p.size() != 1 || Error) {
           cout << "parse error" << endl;
-          exit(-1);
+          return {};
         }
         formax.push_back(p[0]);
       } else {
@@ -541,8 +541,12 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       }
       continue;
     }
-
+    Error = 0;
     vector<MST_Object*> p = Parse2(list, atnest || deftask);
+    if (Error) {
+      cout << "parse error" << endl;
+      return {};
+    }
     if (fornest.size() && lastnest == 4) {
       for (int j = 0; j < p.size(); j++) {
         if (p[j]->Type == MST_Expression) {
@@ -604,7 +608,7 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
       }
       if (e == list.size()) {
         cout << "parse error" << endl;
-        exit(-1);
+        return {};
       }
     } else {
       s = -1;
@@ -621,7 +625,12 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
         if (idop == MSTP_LNot || idop == MSTP_BNot || idop == MSTP_Dollar) {
           if (list2.size() == 0 || list2.back().index() == 0) {
             cout << "parse error" << endl;
-            exit(-1);
+            if (Mode) {
+              Error = 1;
+              return {};
+            } else {
+              exit(-1);
+            }
           }
           MST_Expr* expr = AllocMST_Expr(1);
           if (idop == MSTP_LNot) {
@@ -647,7 +656,9 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
          {MSTP_Equal, MSTP_NE},
          {MSTP_BAnd, MSTP_BOr},
          {MSTP_LAnd, MSTP_LOr},
-         {MSTP_Set, MSTP_DollarEq}};
+         {MSTP_Set, MSTP_DollarEq,
+          MSTP_SetAdd, MSTP_SetSub, MSTP_SetMul, MSTP_SetDiv, MSTP_SetPow,
+          MSTP_SetBAnd, MSTP_SetBOr, MSTP_SetXor, MSTP_SetLAnd, MSTP_SetLOr}};
 
     static vector<vector<enum MST_Operator>> opmst
       = {{MST_Mul, MST_Div, MST_Pow},
@@ -657,7 +668,9 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
          {MST_Equal, MST_NE},
          {MST_BAnd, MST_BOr},
          {MST_LAnd, MST_LOr},
-         {MST_Set, MST_Set}};
+         {MST_Set, MST_Set,
+          MST_Add, MST_BOr, MST_Mul, MST_Div, MST_Pow,
+          MST_BAnd, MST_BOr, MST_Xor, MST_LAnd, MST_LOr}};
 
     if (list2.size()) {
       vector<variant<MSTP_TokenInfo*, MST_Object*>> list3 = {};
@@ -671,7 +684,12 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
               if (idop == opmstp[i][k]) {
                 if (list3.size() == 0 || j+1 == list2.size() || list3.back().index() == 0) {
                   cout << "parse error" << endl;
-                  exit(-1);
+                  if (Mode) {
+                    Error = 1;
+                    return {};
+                  } else {
+                    exit(-1);
+                  }
                 }
                 MST_Object* expr;
                 if (idop == MSTP_Set) {
@@ -679,6 +697,13 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
                     expr = MST_Expr2(MST_Set, get<MST_Object*>(list2[j+1]), get<MST_Object*>(list3.back()));
                   } else {
                     expr = MST_Expr2(MST_Bind, get<MST_Object*>(list2[j+1]), get<MST_Object*>(list3.back()));
+                  }
+                } else if (MSTP_SetAdd <= idop && idop <= MSTP_SetLOr) {
+                  MST_Object* expr2 = MST_Expr2(opmst[i][k], get<MST_Object*>(list2[j+1]), get<MST_Object*>(list3.back()));
+                  if (mode) {
+                    expr = MST_Expr2(MST_Set, CopyMST_Object(get<MST_Object*>(list2[j+1])), expr2);
+                  } else {
+                    expr = MST_Expr2(MST_Bind, CopyMST_Object(get<MST_Object*>(list2[j+1])), expr2);
                   }
                 } else {
                   expr = MST_Expr2(opmst[i][k], get<MST_Object*>(list2[j+1]), get<MST_Object*>(list3.back()));
@@ -702,22 +727,91 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
 
     if (idl == MSTP_BracketL) {
       if (s > 0 && list[s-1].index() == 1) {
-        if (list2.size() != 1 || list2[0].index() != 1) {
+        if (list2.size() == 1) {
+          if (list2[0].index() != 1) {
+            cout << "parse error" << endl;
+            if (Mode) {
+              Error = 1;
+              return {};
+            } else {
+              exit(-1);
+            }
+          }
+          MST_ObjRef* ref = AllocMST_ObjRef();
+          ref->Object.Ptr = get<MST_Object*>(list[s-1]);
+          ref->Index = get<MST_Object*>(list2[0]);
+          vector<variant<MSTP_TokenInfo*, MST_Object*>> list4;
+          for (int i = 0; i < s - 1; i++) {
+            list4.push_back(list[i]);
+          }
+          list4.push_back((MST_Object*)ref);
+          for (int i = e + 1; i < list.size(); i++) {
+            list4.push_back(list[i]);
+          }
+          list = list4;
+        } else if (list2.size() == 3) {
+          if (list2[0].index() != 1 || list2[1].index() != 0 || list2[2].index() != 1) {
+            cout << "parse error" << endl;
+            if (Mode) {
+              Error = 1;
+              return {};
+            } else {
+              exit(-1);
+            }
+          }
+          MST_ObjRef* ref = AllocMST_ObjRef();
+          ref->Object.Ptr = get<MST_Object*>(list[s-1]);
+          ref->Index = get<MST_Object*>(list2[2]);
+          int idop = get<MSTP_TokenInfo*>(list2[1])->OprtID;
+          if (idop == MSTP_PlusSemicolon) {
+            ref->Width = get<MST_Object*>(list2[0]);
+          } else if (idop == MSTP_MinusSemicolon) {
+            MST_Expr* expr = AllocMST_Expr(2);
+            expr->Operator = MST_Sub;
+            expr->Operands[0] = AllocMST_Val(32);
+            expr->Operands[1] = get<MST_Object*>(list2[0]);
+            ref->Width = (MST_Object*)expr;
+            *((int*)(expr->Operands[0]->Ptr)) = 0;
+          } else if (idop == MSTP_Semicolon) {
+            MST_Expr* expr1 = AllocMST_Expr(2);
+            MST_Expr* expr2 = AllocMST_Expr(2);
+            expr2->Operator = MST_Sub;
+            expr2->Operands[0] = get<MST_Object*>(list2[2]);
+            expr2->Operands[1] = get<MST_Object*>(list2[0]);
+            expr1->Operator = MST_Add;
+            expr1->Operands[0] = (MST_Object*)expr2;
+            expr1->Operands[1] = AllocMST_Val(32);
+            *((int*)(expr1->Operands[1]->Ptr)) = 1;
+            ref->Width = (MST_Object*)expr1;
+            ref->Index = get<MST_Object*>(list2[0]);
+          } else {
+            cout << "parse error" << endl;
+            if (Mode) {
+              Error = 1;
+              return {};
+            } else {
+              exit(-1);
+            }
+          }
+          vector<variant<MSTP_TokenInfo*, MST_Object*>> list4;
+          for (int i = 0; i < s - 1; i++) {
+            list4.push_back(list[i]);
+          }
+          list4.push_back((MST_Object*)ref);
+          for (int i = e + 1; i < list.size(); i++) {
+            list4.push_back(list[i]);
+          }
+          list = list4;
+        } else {
           cout << "parse error" << endl;
-          exit(-1);
+          if (Mode) {
+            Error = 1;
+            return {};
+          } else {
+            exit(-1);
+          }
         }
-        MST_ObjRef* ref = AllocMST_ObjRef(1);
-        ref->Object.Ptr = get<MST_Object*>(list[s-1]);
-        ref->Index[0] = get<MST_Object*>(list2[0]);
-        vector<variant<MSTP_TokenInfo*, MST_Object*>> list4;
-        for (int i = 0; i < s - 1; i++) {
-          list4.push_back(list[i]);
-        }
-        list4.push_back((MST_Object*)ref);
-        for (int i = e + 1; i < list.size(); i++) {
-          list4.push_back(list[i]);
-        }
-        list = list4;
+
       } else {
         vector<MST_Object*> nitems = {};
         for (int i = 0; i < list2.size(); i++) {
@@ -726,7 +820,12 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
               continue;
             } else {
               cout << "parse error" << endl;
-              exit(-1);
+              if (Mode) {
+                Error = 1;
+                return {};
+              } else {
+                exit(-1);
+              }
             }
           }
           nitems.push_back(get<MST_Object*>(list2[list2.size() - i -1]));
@@ -763,38 +862,69 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
         list = list4;
       }
     } else if (idl == MSTP_ParenL) {
-      if (s > 0 && list[s-1].index() == 1) {
-        vector<MST_Object*> args;
-        for (int i = 0; i < list2.size(); i++) {
-          if (list2[i].index() == 0) {
-            if (get<MSTP_TokenInfo*>(list2[i])->OprtID == MSTP_Comma) {
-              continue;
+      vector<MST_Object*> args;
+      for (int i = 0; i < list2.size(); i++) {
+        if (list2[i].index() == 0) {
+          if (get<MSTP_TokenInfo*>(list2[i])->OprtID == MSTP_Comma) {
+            continue;
+          } else {
+            cout << "parse error" << endl;
+            if (Mode) {
+              Error = 1;
+              return {};
             } else {
-              cout << "parse error" << endl;
               exit(-1);
             }
           }
-          args.push_back(get<MST_Object*>(list2[list2.size() - i -1]));
         }
-        MST_Expr* expr = AllocMST_Expr(args.size()+1);
-        expr->Operator = MST_Call;
-        expr->Operands[0] = get<MST_Object*>(list[s-1]);
-        for (int i = 0; i < args.size(); i++) {
-          expr->Operands[i+1] = args[i];
+        args.push_back(get<MST_Object*>(list2[list2.size() - i -1]));
+      }
+      if (s > 0 && list[s-1].index() == 1) {
+        if (s > 2 && list[s-2].index() == 0
+            && get<MSTP_TokenInfo*>(list[s-2])->OprtID == MSTP_Piriod
+            && list[s-3].index() == 1) {
+          MST_Expr* expr = AllocMST_Expr(args.size()+2);
+          expr->Operator = MST_MCall;
+          expr->Operands[0] = get<MST_Object*>(list[s-1]);
+          expr->Operands[1] = get<MST_Object*>(list[s-3]);
+          for (int i = 0 ; i < args.size(); i++) {
+            expr->Operands[i+2] = args[i];
+          }
+          vector<variant<MSTP_TokenInfo*, MST_Object*>> list4 = {};
+          for (int i = 0; i < s - 3; i++) {
+            list4.push_back(list[i]);
+          }
+          list4.push_back((MST_Object*)expr);
+          for (int i = e + 1; i < list.size(); i++) {
+            list4.push_back(list[i]);
+          }
+          list = list4;
+        } else {
+          MST_Expr* expr = AllocMST_Expr(args.size()+1);
+          expr->Operator = MST_Call;
+          expr->Operands[0] = get<MST_Object*>(list[s-1]);
+          for (int i = 0; i < args.size(); i++) {
+            expr->Operands[i+1] = args[i];
+          }
+          vector<variant<MSTP_TokenInfo*, MST_Object*>> list4 = {};
+          for (int i = 0; i < s - 1; i++) {
+            list4.push_back(list[i]);
+          }
+          list4.push_back((MST_Object*)expr);
+          for (int i = e + 1; i < list.size(); i++) {
+            list4.push_back(list[i]);
+          }
+          list = list4;
         }
-        vector<variant<MSTP_TokenInfo*, MST_Object*>> list4 = {};
-        for (int i = 0; i < s - 1; i++) {
-          list4.push_back(list[i]);
-        }
-        list4.push_back((MST_Object*)expr);
-        for (int i = e + 1; i < list.size(); i++) {
-          list4.push_back(list[i]);
-        }
-        list = list4;
       } else {
         if (list2.size() != 1 || list2[0].index() != 1) {
           cout << "parse error" << endl;
-          exit(-1);
+          if (Mode) {
+            Error = 1;
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         vector<variant<MSTP_TokenInfo*, MST_Object*>> list4 = {};
         for (int i = 0; i < s; i++) {
@@ -807,62 +937,75 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
         list = list4;
       }
     } else if (idl == MSTP_CurlyBracketL) {
-      vector<int> items = {};
+      vector<MST_Object*> items = {};
       for (int i = 0; i < list2.size(); i++) {
         if (list2[i].index() == 0) {
           if (get<MSTP_TokenInfo*>(list2[i])->OprtID == MSTP_Comma) {
             continue;
           }
           cout << "parse error" << endl;
-          exit(-1);
-        }
-        if (list2[i].index() == 1) {
-          MST_Object* n = get<MST_Object*>(list2[i]);
-          if (n->Type == MST_Value) {
-            MST_Val* val = (MST_Val*)n;
-            if (val->nDim || val->ItemWidth > 32) {
-              cout << "TO DO" << endl;
-              exit(-1);
-            }
-            items.push_back(GetIntMST_Obj(n));
-            FreeMST_Object(n);
+          if (Mode) {
+            Error = 1;
+            return {};
           } else {
-            cout << "TO DO" << endl;
             exit(-1);
           }
         }
+        if (list2[i].index() == 1) {
+          items.push_back(get<MST_Object*>(list2[i]));
+        }
       }
-      vector<int> dim = {(int)items.size()};
-      MST_Object* array = AllocMST_Array(32, dim);
-      int* ptr = (int*)array->Ptr;
+      MST_Lst* lst = AllocMST_Lst(items.size());
       for (int i = 0; i < items.size(); i++) {
-        ptr[i] = items[items.size()-i-1];
+        lst->Items[i] = items[items.size()-i-1];
       }
       vector<variant<MSTP_TokenInfo*, MST_Object*>> list4 = {};
       for (int i = 0; i < s; i++) {
         list4.push_back(list[i]);
       }
-      list4.push_back(array);
+      list4.push_back((MST_Object*)lst);
       for (int i = e + 1; i < list.size(); i++) {
         list4.push_back(list[i]);
       }
       list = list4;
     } else {
       vector<MST_Object*> ret = {};
-      for (int i = 0; i < list2.size(); i++) {
+      for (int i = list2.size()-1; 0 <= i; i--) {
         if (list2[i].index() == 0) {
           if (get<MSTP_TokenInfo*>(list2[i])->OprtID == MSTP_Comma) {
             continue;
           }
+          if (get<MSTP_TokenInfo*>(list2[i])->OprtID == MSTP_Colon) {
+            MST_Str* str = AllocMST_Str(6);
+            strcpy(str->Data, "waitev");
+            MST_Object* ref = (MST_Object*)malloc(sizeof(MST_Object));
+            ref->Type = MST_SymbolReference;
+            ref->Ptr = str;
+            MST_Expr* expr = AllocMST_Expr(1);
+            expr->Operator = MST_Call;
+            expr->Operands[0] = ref;
+            ret.push_back((MST_Object*)expr);
+            continue;
+          }
           cout << "parse error" << endl;
-          exit(-1);
+          if (Mode) {
+            Error = 1;
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         ret.push_back(get<MST_Object*>(list2[i]));
       }
       return ret;
     }
   }
-  return {};
+  if (Mode) {
+    Error = 1;
+    return {};
+  } else {
+    exit(-1);
+  }
 }
 
 vector<MST_Object*> MSTP_Parse(char* src) {
@@ -876,11 +1019,15 @@ vector<MST_Object*> MSTP_Read() {
   int npar = 0;
   int nbl = 0;
   int nest = 0;
+  int sem = 0;
+  int c = 0;
   while(1) {
     if (n > 0xfffe) {
-      exit(-1);
+      return {};
     }
-    int c = getchar();
+    sem = 0;
+    if (c == ':') sem = 1;
+    c = getchar();
     buff[n++] = c;
     switch (c) {
       case ' ':
@@ -901,12 +1048,9 @@ vector<MST_Object*> MSTP_Read() {
       case ']':
         nbl--;
         break;
-      case ':':
-        nest |= 1;
-        break;
     }
     if (c == '\n') {
-      if ((!ll || !nest) && !npar && !nbl) {
+      if ((!ll || !nest) && !npar && !nbl && !sem) {
         break;
       } else {
         ll = 0;
@@ -918,4 +1062,49 @@ vector<MST_Object*> MSTP_Read() {
   }
   buff[n] = 0;
   return MSTP_Parse(buff);
+}
+
+MST_Object* TimingChart(int nargs, MST_Object** args) {
+  double unit = 200;
+  int l = 0;
+  MST_Lst** lst = (MST_Lst**)args;
+  for (int i = 0; i < nargs; i++) {
+    if (args[i]->Type != MST_List) {
+      return NULL;
+    }
+    if (lst[i]->nItems > l) {
+      l = lst[i]->nItems;
+    }
+  }
+  ofstream ofs(string("timingchart.svg"));
+  if (!ofs) {
+    return NULL;
+  }
+  ofs << "<?xml version=\"1.0\"?><!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">";
+  ofs << "<svg width=\"" << (l+2) * unit << "\" height=\"" << nargs * unit * 2 << "\" xmlns=\"http://www.w3.org/2000/svg\" style=\"background-color:black;\">";
+  for (int i = 0; i < nargs; i++) {
+    ofs << "<rect x=\"" << unit << "\" y=\"" << (unit*2*i) + (unit/2) << "\" width=\"" << l*unit << "\" height=\"" << unit
+        << "\" style=\"stroke: darkgreen; stroke-width:2; fill:none\"/>";
+    vector<int> val = {};
+    double max = 1.0;
+    for (int j = 0; j < lst[i]->nItems; j++) {
+      val.push_back(GetIntMST_Obj(lst[i]->Items[j]));
+      if (val.back() > max) max = val.back();
+      if (j) {
+        ofs << "<line x1=\"" << unit+(unit*j) << "\" x2=\"" << unit+(unit*j) << "\" y1=\"" << (unit*2*i)+(unit/2) << "\" y2=\"" << (unit*2*i)+(unit*3/2) << "\""
+            << " style=\"stroke: darkgreen; stroke-width:2;stroke-dasharray: 20 10;\"/>";
+      }
+    }
+    ofs << "<path d=\"";
+    for (int j = 0; j < val.size(); j++) {
+      if (!j) ofs << " M " << (j+1)*unit << " " << (unit*2*i) + (unit*3/2) - (val[j]/max)*unit;
+      ofs << " L " << (j+2)*unit << " " << (unit*2*i) + (unit*3/2) - (val[j]/max)*unit;
+      if (j+1 < val.size()) {
+        ofs << " L " << (j+2)*unit << " " << (unit*2*i) + (unit*3/2) - (val[j+1]/max)*unit;
+      }
+    }
+    ofs << "\" style=\"stroke: green; stroke-width:8; fill:none\"/>";
+  }
+  ofs << "</svg>";
+  return NULL;
 }

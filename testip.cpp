@@ -47,6 +47,9 @@ int main() {
   AddMST_ExFunc(string("printsv"), PrintSV);
   AddMST_ExFunc(string("waitev"), WaitEv);
   AddMST_ExFunc(string("print"), Print);
+  AddMST_ExFunc(string("tchart"), TimingChart);
+
+  MST_SetMode(1);
 
   vector<MST_Object*> obj;
   while(!quit) {
