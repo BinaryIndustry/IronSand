@@ -104,7 +104,7 @@ struct MST_SVLog {
 };
 
 string AddIndent(string src, int n = 1);
-MST_Object* SolveMST_Object(MST_Object* obj, int at);
+MST_Object* SolveMST_Object(MST_Object* obj);
 MST_SVExpr SVRefMST_Object(MST_Object* obj);
 string SVDecMST_Object(MST_SVLog* obj);
 int FreeMST_Object(MST_Object* obj);

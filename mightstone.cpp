@@ -14,8 +14,15 @@ using namespace std;
 
 static MST_Env* mst_env = new MST_Env;
 
-MST_Object* SolveMST_Object(MST_Object* obj, int at) {
+MST_Object* SolveMST_Object(MST_Object* obj) {
   static MST_Object error = {NULL, MST_Error};
+  if (!obj || obj->Type == MST_Error) {
+    if (MST_GetMode()) {
+      return &error;
+    } else {
+      exit(-1);
+    }
+  }
   if (obj->Type == MST_Error) {
     if (MST_GetMode()) {
       return &error;
@@ -25,7 +32,7 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
   }
   if (obj->Type == MST_Expression) {
     MST_Expr* expr = (MST_Expr*)obj;
-    if (at && expr->Operator == MST_For) {
+    if (expr->Operator == MST_For) {
       if (expr->nOperand < 2) {
         cout << "invalid expression" << endl;
         if (MST_GetMode()) {
@@ -36,19 +43,7 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
       }
       if (expr->Operands[0]->Type != MST_SymbolReference) {
         cout << "error" << endl;
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
-      }
-      if (expr->Operands[1]->Type != MST_Value) {
-        cout << "error" << endl;
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
       MST_SetErrorFlag(0);
       int n = GetIntMST_Obj(expr->Operands[1]);
@@ -66,7 +61,7 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
       for (int i = 0; i < n; i++) {
         for (int j = 0; j < expr->nOperand - 2; j++) {
           if (expr->Operands[j+2] && expr->Operands[j+2]->Type == MST_Expression)
-            progexpr.push_back(SolveMST_Object(CopyMST_Object(expr->Operands[j+2]), at));
+            progexpr.push_back(SolveMST_Object(CopyMST_Object(expr->Operands[j+2])));
             if (progexpr.back()->Type == MST_Error) {
               if (MST_GetMode()) {
                 return &error;
@@ -88,119 +83,85 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
       FreeMST_Object((MST_Object*)expr);
       return (MST_Object*)prog;
     }
-    for (int i = 0; i < expr->nOperand; i++) {
-      if (expr->Operands[i]) {
-        expr->Operands[i] = SolveMST_Object(expr->Operands[i], at);
-        if (expr->Operands[i]->Type == MST_Error) {
+    if (expr->Operator == MST_Bind) {
+      MST_Object* ret = EvalMST_Expr(expr, 0);
+      FreeMST_Object(obj);
+      return ret;
+    } else if (expr->Operator == MST_Set) {
+      if (expr->nOperand != 2) {
+        cout << "invalid expression" << endl;
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
+      if (expr->Operands[0]->Type == MST_SymbolReference) {
+        MST_Sym* sym = MST_GetSym(expr->Operands[0]);
+        if (sym->Val->Type == MST_Value) {
+          expr->Operator = MST_Bind;
+          MST_Object* ret = EvalMST_Expr(expr, 0);
+          FreeMST_Object(obj);
+          return ret;
+        }
+      }
+    } else if (expr->Operator == MST_Call) {
+      if (expr->nOperand < 1) {
+        cout << "task is unspecified" << endl;
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
+        }
+      }
+      if (expr->Operands[0]->Type == nMST_Task) {
+        MST_Object* ret = SolveMST_Task((MST_Task*)expr->Operands[0], expr->nOperand - 1, expr->Operands+1);
+        FreeMST_Object(obj);
+        if (ret->Type == MST_Error) {
           if (MST_GetMode()) {
             return &error;
           } else {
             exit(-1);
           }
+        }
+        return ret;
+      } else {
+        cout << "only tasks can called on \"at\" syntax" << endl;
+        if (MST_GetMode()) {
+          return &error;
+        } else {
+          exit(-1);
         }
       }
     }
-    if (at) {
-      if (expr->Operator == MST_Bind) {
-        MST_Object* ret = EvalMST_Expr(expr, 0);
-        FreeMST_Object(obj);
-        return ret;
-      } else if (expr->Operator == MST_Set) {
-        if (expr->nOperand != 2) {
-          cout << "invalid expression" << endl;
-          if (MST_GetMode()) {
-            return &error;
-          } else {
-            exit(-1);
-          }
-        }
-        if (expr->Operands[0]->Type == MST_Symbol) {
-          MST_Sym* sym = (MST_Sym*)expr->Operands[0];
-          if (sym->Val->Type == MST_Value) {
-            expr->Operator = MST_Bind;
-            MST_Object* ret = EvalMST_Expr(expr, 0);
-            FreeMST_Object(obj);
-            return ret;
-          }
-        }
-      }
-      for (int i = 0; i < expr->nOperand; i++) {
-        if (expr->Operands[i]->Type == MST_Symbol) {
-          MST_Sym* sym = (MST_Sym*)expr->Operands[i];
-          if (sym->Val) {
-            expr->Operands[i] = CopyMST_Object(sym->Val);
-            if (expr->Operands[i]->Type == MST_Error) {
-              if (MST_GetMode()) {
-                return &error;
-              } else {
-                exit(-1);
-              }
-            }
-          }
-        }
-      }
-      if (expr->Operator == MST_Call) {
-        if (expr->nOperand < 1) {
-          cout << "invalid expression" << endl;
-          if (MST_GetMode()) {
-            return &error;
-          } else {
-            exit(-1);
-          }
-        }
-        if (expr->Operands[0]->Type == nMST_Task) {
-          MST_Object* ret = SolveMST_Task((MST_Task*)expr->Operands[0], expr->nOperand - 1, expr->Operands+1);
-          for (int i = 0; i < expr->nOperand; i++) {
-            FreeMST_Object(expr->Operands[i]);
-          }
-          return ret;
-        } else {
-          cout << "invalid expression" << endl;
-          if (MST_GetMode()) {
-            return &error;
-          } else {
-            exit(-1);
-          }
-        }
+    for (int i = 0; i < expr->nOperand; i++) {
+      expr->Operands[i] = SolveMST_Object(expr->Operands[i]);
+      if (expr->Operands[i]->Type == MST_Error) {
+        return &error;
       }
     }
     return obj;
   } else if (obj->Type == MST_SymbolReference) {
-    MST_Sym* sym = MST_GetSym(obj);
-    if (sym->Object.Type == MST_Error) {
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
-    }
+    MST_Object* ret = SolveMST_Object(CopyMST_Object(MST_GetSymVal(obj)));
     FreeMST_Object(obj);
-    if (sym->Val->Type == MST_SVLogic || sym->Val->Type == MST_Value || sym->Val->Type == MST_List) {
-      return CopyMST_Object(sym->Val);
+    if (ret->Type == MST_Error) {
+      return &error;
     }
-    return (MST_Object*)sym;
+    return ret;
   } else if (obj->Type == MST_List) {
     MST_Lst* lst = (MST_Lst*)obj;
     for (int i = 0; i < lst->nItems; i++) {
       if (lst->Items[i]) {
-        lst->Items[i] = SolveMST_Object(lst->Items[i], at);
+        lst->Items[i] = SolveMST_Object(lst->Items[i]);
         if (lst->Items[i]->Type == MST_Error) {
-          if (MST_GetMode()) {
-            return &error;
-          } else {
-            exit(-1);
-          }
+          return &error;
         }
         if (lst->Items[i]->Type == MST_Symbol) {
           MST_Sym* sym = (MST_Sym*)lst->Items[i];
           if (sym->Val && sym->Val->Type == MST_Value) {
             lst->Items[i] = CopyMST_Object(sym->Val);
             if (lst->Items[i]->Type == MST_Error) {
-              if (MST_GetMode()) {
-                return &error;
-              } else {
-                exit(-1);
-              }
+              return &error;
             }
           }
         }
@@ -209,31 +170,19 @@ MST_Object* SolveMST_Object(MST_Object* obj, int at) {
     return obj;
   } else if (obj->Type == MST_ObjectReference) {
     MST_ObjRef* ref = (MST_ObjRef*)obj;
-    ref->Object.Ptr = SolveMST_Object((MST_Object*)ref->Object.Ptr, at);
+    ref->Object.Ptr = SolveMST_Object((MST_Object*)ref->Object.Ptr);
     if (((MST_Object*)ref->Object.Ptr)->Type == MST_Error) {
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      return &error;
     }
     if (ref->Width) {
-      ref->Width = SolveMST_Object(ref->Width, at);
+      ref->Width = SolveMST_Object(ref->Width);
       if (ref->Width->Type == MST_Error) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
     }
-    ref->Index = SolveMST_Object(ref->Index, at);
+    ref->Index = SolveMST_Object(ref->Index);
     if (ref->Index->Type == MST_Error) {
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      return &error;
     }
     return obj;
   } else {
@@ -361,6 +310,7 @@ string SVDecMST_Object(MST_SVLog* obj) {
 }
 
 int FreeMST_Object(MST_Object* obj) {
+  if (!obj) return 0;
   if (obj->Type == MST_Value) {
     MST_Val* val = (MST_Val*)obj;
     if (val->ArrName) delete val->ArrName;
@@ -414,14 +364,14 @@ int FreeMST_Object(MST_Object* obj) {
     free(expr);
     return 0;
   } else {
-    cout << "error" << endl;
+    cout << "unknown type" << endl;
     exit(-1);
   }
 }
 
 MST_Object* CopyMST_Object(MST_Object* obj) {
   static MST_Object error = {NULL, MST_Error};
-  if (obj->Type == MST_Error) {
+  if (!obj || obj->Type == MST_Error) {
     if (MST_GetMode()) {
       return &error;
     } else {
@@ -459,7 +409,7 @@ MST_Object* CopyMST_Object(MST_Object* obj) {
     s += sizeof(MST_Val) + src->nDim*4;
     MST_Val* dst = (MST_Val*)malloc(s);
     if (dst == NULL) {
-      cout << "alloc error" << endl;
+      cout << "allocation error" << endl;
       exit(-1);
     }
     memcpy(dst, src, s);
@@ -469,7 +419,7 @@ MST_Object* CopyMST_Object(MST_Object* obj) {
   } else if (obj->Type == MST_SymbolReference) {
     MST_Object* dst = (MST_Object*)malloc(sizeof(MST_Object));
     if (dst == NULL) {
-      cout << "alloc error" << endl;
+      cout << "allocation error" << endl;
       exit(-1);
     }
     dst->Type = MST_SymbolReference;
@@ -486,7 +436,7 @@ MST_Object* CopyMST_Object(MST_Object* obj) {
     MST_Str* src = (MST_Str*)obj;
     MST_Str* dst = AllocMST_Str(src->cLen);
     if (dst == NULL) {
-      cout << "alloc error" << endl;
+      cout << "allocation error" << endl;
       exit(-1);
     }
     memcpy(dst->Data, src->Data, src->cLen);
@@ -499,11 +449,7 @@ MST_Object* CopyMST_Object(MST_Object* obj) {
       if (src->Items[i]) {
         dst->Items[i] = CopyMST_Object(src->Items[i]);
         if (dst->Items[i]->Type == MST_Error) {
-          if (MST_GetMode()) {
-            return &error;
-          } else {
-            exit(-1);
-          }
+          return &error;
         }
       } else {
         dst->Items[i] = NULL;
@@ -515,31 +461,19 @@ MST_Object* CopyMST_Object(MST_Object* obj) {
     MST_ObjRef* dst = AllocMST_ObjRef();
     dst->Object.Ptr = CopyMST_Object((MST_Object*)obj->Ptr);
     if (((MST_Object*)dst->Object.Ptr)->Type == MST_Error) {
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      return &error;
     }
     if (src->Width) {
       dst->Width = CopyMST_Object(src->Width);
       if (dst->Width->Type == MST_Error) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
     } else {
       dst->Width = NULL;
     }
     dst->Index = CopyMST_Object(src->Index);
     if (dst->Index->Type == MST_Error) {
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      return &error;
     }
     return (MST_Object*)dst;
   } else if (obj->Type == MST_SVExpression) {
@@ -586,7 +520,7 @@ MST_Object* AllocMST_Val(int w) {
 
   MST_Val* val = (MST_Val*)malloc(sizeof(MST_Val)+bw);
   if (val == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
 
@@ -610,7 +544,7 @@ MST_Object* AllocMST_Array(int w, vector<int> dim) {
 
   MST_Val* val = (MST_Val*)malloc(sizeof(MST_Val)+4*dim.size()+size);
   if (val == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
 
@@ -631,7 +565,7 @@ MST_Object* AllocMST_Array(int w, vector<int> dim) {
 MST_ObjRef* AllocMST_ObjRef() {
   MST_ObjRef* ref = (MST_ObjRef*)malloc(sizeof(MST_ObjRef));
   if (ref == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
   ref->Object.Type = MST_ObjectReference;
@@ -643,7 +577,7 @@ MST_ObjRef* AllocMST_ObjRef() {
 MST_Lst* AllocMST_Lst(int n) {
   MST_Lst* lst = (MST_Lst*)malloc(sizeof(MST_Lst));
   if (lst == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
   lst->Object.Type = MST_List;
@@ -657,7 +591,7 @@ MST_Lst* AllocMST_Lst(int n) {
 MST_Object* Push_MST_Lst(int nargs, MST_Object** args) {
   static MST_Object error = {NULL, MST_Error};
   if (nargs < 2 || args[0]->Type != MST_List) {
-    cout << "error" << endl;
+    cout << "too few argments" << endl;
     if (MST_GetMode()) {
       return &error;
     } else {
@@ -668,7 +602,7 @@ MST_Object* Push_MST_Lst(int nargs, MST_Object** args) {
   if (lst->nItems + nargs-1 > lst->mItems) {
     MST_Object** items = (MST_Object**)malloc((lst->nItems + nargs+4)*sizeof(MST_Object*));
     if (!items) {
-      cout << "alloc error" << endl;
+      cout << "allocation error" << endl;
       exit(-1);
     }
     for (int i = 0; i < lst->nItems; i++) {
@@ -680,6 +614,9 @@ MST_Object* Push_MST_Lst(int nargs, MST_Object** args) {
   }
   for (int i = 0; i < nargs-1; i++) {
     lst->Items[i+lst->nItems] = CopyMST_Object(args[i+1]);
+    if (lst->Items[i+lst->nItems]->Type == MST_Error) {
+      return &error;
+    }
   }
   lst->nItems = lst->nItems + nargs-1;
   return NULL;
@@ -688,7 +625,7 @@ MST_Object* Push_MST_Lst(int nargs, MST_Object** args) {
 MST_Func* AllocMST_Func(int nargs, int nexpr) {
   MST_Func* func = (MST_Func*)malloc(sizeof(MST_Func)+4*nexpr);
   if (func == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
   func->Object.Type = MST_Function;
@@ -700,7 +637,7 @@ MST_Func* AllocMST_Func(int nargs, int nexpr) {
 }
 
 int GetIntMST_Obj(MST_Object* obj) {
-  if (obj->Type == MST_Error) {
+  if (!obj || obj->Type == MST_Error) {
     if (MST_GetMode()) {
       MST_SetErrorFlag(1);
       return 0;
@@ -708,12 +645,10 @@ int GetIntMST_Obj(MST_Object* obj) {
       exit(-1);
     }
   }
-  int w;
-  void* ptr;
   if (obj->Type == MST_Value) {
     MST_Val* val = (MST_Val*)obj;
     if (val->nDim || val->ItemWidth > 32) {
-      cout << "error" << endl;
+      cout << "value is not 32bit or smaller integer" << endl;
       if (MST_GetMode()) {
         MST_SetErrorFlag(1);
         return 0;
@@ -736,7 +671,7 @@ int GetIntMST_Obj(MST_Object* obj) {
   } else if (obj->Type == MST_SVLogic) {
     MST_SVLog* log = (MST_SVLog*)obj;
     if (log->nDim || log->ItemWidth > 32) {
-      cout << "error" << endl;
+      cout << "a logic array or a logic larger than 32bit can't be integer" << endl;
       if (MST_GetMode()) {
         MST_SetErrorFlag(1);
         return 0;
@@ -793,19 +728,13 @@ int GetIntMST_Obj(MST_Object* obj) {
   } else if (obj->Type == MST_Expression) {
     MST_Object* val = EvalMST_Expr((MST_Expr*)obj, 1);
     if (!val || val->Type == MST_Error) {
-      cout << "error" << endl;
-      if (MST_GetMode()) {
-        MST_SetErrorFlag(1);
-        return 0;
-      } else {
-        exit(-1);
-      }
+      MST_SetErrorFlag(1);
     }
     int n = GetIntMST_Obj(val);
     FreeMST_Object(val);
     return n;
   } else {
-    cout << "error" << endl;
+    cout << "unknown type" << endl;
     if (MST_GetMode()) {
       MST_SetErrorFlag(1);
       return 0;
@@ -813,17 +742,6 @@ int GetIntMST_Obj(MST_Object* obj) {
       exit(-1);
     }
   }
-  if (!ptr) {
-    if (MST_GetMode()) {
-      MST_SetErrorFlag(1);
-      return 0;
-    } else {
-      exit(-1);
-    }
-  }
-  int n = *((int*)ptr);
-  n &= -1 >> (32 - w);
-  return n;
 }
 
 MST_SVExpr SVCodeMST_Expr(MST_Expr* expr) {
@@ -1031,7 +949,7 @@ MST_SVExpr SVCodeMST_Expr2(MST_Expr* expr) {
 MST_Expr* AllocMST_Expr(int n) {
   MST_Expr* expr = (MST_Expr*)malloc(sizeof(MST_Expr)+4*n);
   if (expr == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
   expr->Object.Ptr = expr;
@@ -1043,7 +961,7 @@ MST_Expr* AllocMST_Expr(int n) {
 MST_Object* MST_Expr2(enum MST_Operator oprt, MST_Object* oprd1, MST_Object* oprd2) {
   MST_Expr* expr = (MST_Expr*)malloc(sizeof(MST_Expr)+8);
   if (expr == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
 
@@ -1120,13 +1038,9 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       }
     }
     for (int i = 1; i < expr->nOperand; i++) {
-      trg->Expr[i-1] = (MST_Expr*)SolveMST_Object(CopyMST_Object(expr->Operands[i]), 1);
+      trg->Expr[i-1] = (MST_Expr*)SolveMST_Object(CopyMST_Object(expr->Operands[i]));
       if (trg->Expr[i-1]->Object.Type == MST_Error) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
     }
     trg->nExpr = expr->nOperand-1;
@@ -1153,11 +1067,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     for (int i = 0; i < expr->nOperand-2; i++) {
       func->Expr[i] = (MST_Expr*)CopyMST_Object(expr->Operands[i+2]);
       if (func->Expr[i]->Object.Type == MST_Error) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
     }
     MST_TransArglst(func->Args, (MST_Lst*)expr->Operands[1]);
@@ -1192,11 +1102,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     for (int i = 0; i < expr->nOperand-2; i++) {
       task->Expr[i] = (MST_Expr*)CopyMST_Object(expr->Operands[i+2]);
       if (task->Expr[i]->Object.Type == MST_Error) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
     }
     MST_TransArglst(task->Args, arg);
@@ -1215,21 +1121,13 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     if (cond->Type == MST_Expression) {
       cond = EvalMST_Expr((MST_Expr*)cond, sim);
       if (cond->Type == MST_Error) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
       f = 1;
     } else if (cond->Type == MST_Symbol == cond->Type == MST_SymbolReference) {
       cond = MST_GetSymVal(cond);
       if (cond->Type == MST_Error) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
       f = 1;
     }
@@ -1255,11 +1153,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
           if (lst->Items[i] && lst->Items[i]->Type == MST_Expression)
             ret = EvalMST_Expr((MST_Expr*)lst->Items[i], sim);
           if (ret && ret->Type == MST_Error) {
-            if (MST_GetMode()) {
-              return &error;
-            } else {
-              exit(-1);
-            }
+            return &error;
           }
         }
         return ret;
@@ -1283,11 +1177,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
           if (lst->Items[i] && lst->Items[i]->Type == MST_Expression)
             ret = EvalMST_Expr((MST_Expr*)lst->Items[i], sim);
           if (ret && ret->Type == MST_Error) {
-            if (MST_GetMode()) {
-              return &error;
-            } else {
-              exit(-1);
-            }
+            return &error;
           }
         }
         return ret;
@@ -1308,11 +1198,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       if (expr->Operands[i] && expr->Operands[i]->Type == MST_Expression)
         ret = EvalMST_Expr((MST_Expr*)expr->Operands[i], sim);
       if (ret && ret->Type == MST_Error) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
     }
     return ret;
@@ -1326,14 +1212,6 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       }
     }
     if (expr->Operands[0]->Type != MST_SymbolReference) {
-      cout << "error" << endl;
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
-    }
-    if (expr->Operands[1]->Type != MST_Value) {
       cout << "error" << endl;
       if (MST_GetMode()) {
         return &error;
@@ -1361,11 +1239,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
         if (expr->Operands[j+2] && expr->Operands[j+2]->Type == MST_Expression)
           ret = EvalMST_Expr((MST_Expr*)expr->Operands[j+2], sim);
         if (ret && ret->Type == MST_Error) {
-          if (MST_GetMode()) {
-            return &error;
-          } else {
-            exit(-1);
-          }
+          return &error;
         }
       }
       *((int*)val->Ptr) = i+1;
@@ -1398,24 +1272,16 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     }
     void* ptr = malloc(size);
     if (ptr == NULL) {
-      cout << "alloc error" << endl;
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      cout << "allocation error" << endl;
+      exit(-1);
     }
     log->Wire = ptr;
     memset(ptr, 0, size);
 
     ptr = malloc(size);
     if (ptr == NULL) {
-      cout << "alloc error" << endl;
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      cout << "allocation error" << endl;
+      exit(-1);
     }
     log->Reg = ptr;
     memset(ptr, 0, size);
@@ -1423,6 +1289,9 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
   } else if (expr->Operator == MST_Bind) {
     MST_BindSym(expr->Operands[0], EvalMST_Object(expr->Operands[1], sim));
     ret = CopyMST_Object(expr->Operands[0]);
+    if (ret->Type == MST_Error) {
+      return &error;
+    }
   } else if (expr->Operator == MST_NewPort) {
     if (expr->nOperand < 1) {
       cout << "error" << endl;
@@ -1461,31 +1330,23 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     }
     void* ptr = malloc(size);
     if (ptr == NULL) {
-      cout << "alloc error" << endl;
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      cout << "allocation error" << endl;
+      exit(-1);
     }
     log->Wire = ptr;
     memset(ptr, 0, size);
 
     ptr = malloc(size);
     if (ptr == NULL) {
-      cout << "alloc error" << endl;
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      cout << "allocation error" << endl;
+      return &error;
     }
     log->Reg = ptr;
     memset(ptr, 0, size);
     ret = (MST_Object*)log;
   } else if (expr->Operator == MST_Call) {
     if (expr->nOperand < 1) {
-      cout << "error" << endl;
+      cout << "function or task is unspecified" << endl;
       if (MST_GetMode()) {
         return &error;
       } else {
@@ -1501,7 +1362,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     if (func->Type == MST_Function) {
       ret = CallMST_Func((MST_Func*)func, expr->nOperand-1, expr->Operands+1);
     } else if (func->Type == nMST_Task) {
-      cout << "error" << endl;
+      cout << "task can only called on \"at\" syntax" << endl;
       if (MST_GetMode()) {
         return &error;
       } else {
@@ -1511,7 +1372,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       MST_ExFunc* xfunc = (MST_ExFunc*)func;
       MST_Object** oprd = (MST_Object**)malloc(expr->nOperand-1);
       if (!oprd) {
-        cout << "alloc error" << endl;
+        cout << "allocation error" << endl;
         exit(-1);
       }
       for (int i = 0; i < expr->nOperand-1; i++) {
@@ -1522,7 +1383,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
         FreeMST_Object(oprd[i]);
       }
     } else {
-      cout << "error" << endl;
+      cout << "calling an object not callable" << endl;
       if (MST_GetMode()) {
         return &error;
       } else {
@@ -1545,11 +1406,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       th = expr->Operands[1];
     }
     if (th->Type == MST_Error) {
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      return &error;
     }
     MST_Object* func;
     if (expr->Operands[0]->Type == MST_SymbolReference) {
@@ -1577,17 +1434,13 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       func = expr->Operands[0];
     }
     if (func->Type == MST_Error) {
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      return &error;
     }
     if (func->Type == MST_ExternalFunction) {
       MST_ExFunc* xfunc = (MST_ExFunc*)func;
       MST_Object** oprd = (MST_Object**)malloc(expr->nOperand-2);
       if (!oprd) {
-        cout << "alloc error" << endl;
+        cout << "allocation error" << endl;
         exit(-1);
       }
       oprd[0] = th;
@@ -1637,19 +1490,11 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     } else {
       MST_Object* oprd1 = EvalMST_Object(expr->Operands[0], sim);
       if (oprd1->Type == MST_Error) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
       MST_Object* oprd2 = EvalMST_Object(expr->Operands[1], sim);
       if (oprd2->Type == MST_Error) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
       if ((oprd1->Type == MST_Value && oprd2->Type == MST_Value) || sim) {
         MST_SetErrorFlag(0);
@@ -1677,11 +1522,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
   } else if (expr->nOperand == 1) {
     MST_Object* oprd1 = EvalMST_Object(expr->Operands[0], sim);
     if (oprd1->Type == MST_Error) {
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
+      return &error;
     }
     if (expr->Operands[0]->Type == MST_Value || sim) {
       MST_SetErrorFlag(0);
@@ -1703,7 +1544,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       ex->Operands[0] = oprd1;
       ret = (MST_Object*)ex;
     } else {
-      cout << "EvalMST_Expr: Invalid expression" << endl;
+      cout << "invalid expression" << endl;
       if (MST_GetMode()) {
         return &error;
       } else {
@@ -1711,7 +1552,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       }
     }
   } else {
-    cout << "EvalMST_Expr: Invalid expression" << endl;
+    cout << "invalid expression" << endl;
     if (MST_GetMode()) {
       return &error;
     } else {
@@ -2058,6 +1899,10 @@ int MST_TransArglst(MST_Lst* dst, MST_Lst* src) {
     if (src->Items[i]->Type == MST_SymbolReference) {
       dst->Items[i*2] =  CopyMST_Object(src->Items[i]);
       dst->Items[i*2+1] = NULL;
+      if (dst->Items[i*2]->Type == MST_Error) {
+        MST_SetErrorFlag(1);
+        return -1;
+      }
     } else if (src->Items[i]->Type == MST_List) {
       MST_Lst* a = (MST_Lst*)src->Items[i];
       if (a->nItems == 0 || a->nItems > 2) {
@@ -2066,7 +1911,15 @@ int MST_TransArglst(MST_Lst* dst, MST_Lst* src) {
       }
       if (a->Items[0]->Type == MST_SymbolReference) {
         dst->Items[i*2] = CopyMST_Object(a->Items[0]);
+        if (dst->Items[i*2]->Type == MST_Error) {
+          MST_SetErrorFlag(1);
+          return -1;
+        }
         dst->Items[i*2+1] = CopyMST_Object(a->Items[1]);
+        if (dst->Items[i*2+1]->Type == MST_Error) {
+          MST_SetErrorFlag(1);
+          return -1;
+        }
       } else {
         cout << "error" << endl;
         exit(-1);
@@ -2078,35 +1931,50 @@ int MST_TransArglst(MST_Lst* dst, MST_Lst* src) {
 
 int MST_BindArgs(MST_Lst* arglst, int nargs, MST_Object** args) {
   if (nargs > arglst->nItems/2) {
-    cout << "error" << endl;
+    cout << "too many argment" << endl;
     exit(-1);
   }
-  MST_OpenScope();
+  vector<MST_Object*> val;
+
   for (int i = 0; i < arglst->nItems/2; i++) {
     if (i >= nargs) {
       if (!arglst->Items[i*2+1]) {
         cout << "error" << endl;
         exit(-1);
       }
-      MST_BindSym(arglst->Items[i*2], EvalMST_Object(arglst->Items[i*2+1], 0));
+      val.push_back(EvalMST_Object(arglst->Items[i*2+1], 0));
     } else {
-      MST_BindSym(arglst->Items[i*2], EvalMST_Object(args[i], 0));
+      val.push_back(EvalMST_Object(args[i], 0));
     }
+    if (!val.back() || val.back()->Type == MST_Error) {
+      return -1;
+    }
+  }
+  MST_OpenScope();
+  for (int i = 0; i < val.size(); i++) {
+    MST_BindSym(arglst->Items[i*2], val[i]);
   }
   return 0;
 }
 
 MST_Object* CallMST_Func(MST_Func* func, int nargs, MST_Object** args) {
-  MST_BindArgs(func->Args, nargs, args);
+  static MST_Object error = {NULL, MST_Error};
+
+  if (MST_BindArgs(func->Args, nargs, args) != 0) {
+    return &error;
+  }
+
   MST_Object* ret = NULL;
   for (int i = 0; i < func->nExpr; i++) {
     if (ret) {
       FreeMST_Object(ret);
       ret = NULL;
     }
-    MST_Object* copy = CopyMST_Object((MST_Object*)func->Expr[i]);
-    ret = EvalMST_Expr((MST_Expr*)copy, 0);
-    FreeMST_Object(copy);
+    ret = EvalMST_Expr((MST_Expr*)func->Expr[i], 0);
+    if (ret && ret->Type == MST_Error) {
+      MST_CloseScope();
+      return ret;
+    }
   }
   MST_CloseScope();
   return ret;
@@ -2115,7 +1983,7 @@ MST_Object* CallMST_Func(MST_Func* func, int nargs, MST_Object** args) {
 MST_Task* AllocMST_Task(int nargs, int nexpr) {
   MST_Task* task = (MST_Task*)malloc(sizeof(MST_Task)+4*nexpr);
   if (task == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
   task->Object.Type = nMST_Task;
@@ -2129,7 +1997,7 @@ MST_Task* AllocMST_Task(int nargs, int nexpr) {
 MST_ExFunc* AllocMST_ExFunc() {
   MST_ExFunc* func = (MST_ExFunc*)malloc(sizeof(MST_ExFunc));
   if (func == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
   func->Object.Type = MST_ExternalFunction;
@@ -2144,8 +2012,9 @@ MST_Object* SolveMST_Task(MST_Task* task, int nargs, MST_Object** args) {
   MST_Expr* expr = AllocMST_Expr(task->nExpr);
   expr->Operator = MST_Progn;
   for (int i = 0; i < task->nExpr; i++) {
-    expr->Operands[i] = SolveMST_Object(CopyMST_Object((MST_Object*)task->Expr[i]), 1);
+    expr->Operands[i] = SolveMST_Object(CopyMST_Object((MST_Object*)task->Expr[i]));
     if (expr->Operands[i]->Type == MST_Error) {
+      MST_CloseScope();
       return expr->Operands[i];
     }
   }
@@ -2171,13 +2040,13 @@ MST_Trigger* AddTrgMST_TrgTask(MST_TrgTask* task, enum MST_Edge edge, MST_SVLog*
     while (trg->LinkByTask) trg = trg->LinkByTask;
     trg = (trg->LinkByTask = (MST_Trigger*)malloc(sizeof(MST_Trigger)));
     if (trg == NULL) {
-      cout << "alloc error" << endl;
+      cout << "allocation error" << endl;
       exit(-1);
     }
   } else {
     trg = (MST_Trigger*)malloc(sizeof(MST_Trigger));
     if (trg == NULL) {
-      cout << "alloc error" << endl;
+      cout << "allocation error" << endl;
       exit(-1);
     }
     task->Trg = trg;
@@ -2322,7 +2191,7 @@ MST_SVLog* MST_Env::AddObject(int ndim) {
   }
   MST_SVLog* obj = (MST_SVLog*)malloc(sizeof(MST_SVLog) + sizeof(int) * ndim);
   if (obj == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
   if (Tables.size() > 1) {
@@ -2348,7 +2217,7 @@ MST_SVLog* MST_Env::AddObject(int ndim) {
 MST_TrgTask* MST_Env::AddTrgTask(int n) {
   MST_TrgTask* task = (MST_TrgTask*)malloc(sizeof(MST_TrgTask) + n * sizeof(MST_Expr*));
   if (task == NULL) {
-    cout << "alloc error" << endl;
+    cout << "allocation error" << endl;
     exit(-1);
   }
   TrgTasks.push_back(task);
@@ -2358,25 +2227,37 @@ MST_TrgTask* MST_Env::AddTrgTask(int n) {
 }
 
 MST_Func* MST_Env::AddFunction(MST_Object* name, int nargs, int nexpr) {
+  static MST_Object error = {NULL, MST_Error};
   MST_Func* func = AllocMST_Func(nargs, nexpr);
   Functions.push_back(func);
   func->Name = (MST_Str*)CopyMST_Object(name);
+  if (func->Name->Object.Type == MST_Error) {
+    return (MST_Func*)&error;
+  }
   MST_BindSym(name, (MST_Object*)func);
   return func;
 }
 
 MST_Task* MST_Env::AddTask(MST_Object* name, int nargs, int nexpr) {
+  static MST_Object error = {NULL, MST_Error};
   MST_Task* task = AllocMST_Task(nargs, nexpr);
   Tasks.push_back(task);
   task->Name = (MST_Str*)CopyMST_Object(name);
   MST_BindSym(name, (MST_Object*)task);
+  if (task->Name->Object.Type == MST_Error) {
+    return (MST_Task*)&error;
+  }
   return task;
 }
 
 MST_ExFunc* MST_Env::AddExFunc(MST_Object* name, MST_Object* (*pfunc)(int nargs, MST_Object** args)) {
+  static MST_Object error = {NULL, MST_Error};
   MST_ExFunc* func = AllocMST_ExFunc();
   ExFunctions.push_back(func);
   func->Name = (MST_Str*)CopyMST_Object(name);
+  if (func->Name->Object.Type == MST_Error) {
+    return (MST_ExFunc*)&error;
+  }
   func->pFunc = pfunc;
   MST_BindSym(name, (MST_Object*)func);
   return func;
@@ -2416,7 +2297,7 @@ int MST_Env::AllocObjects() {
         }
         void* ptr = malloc(size);
         if (ptr == NULL) {
-          cout << "alloc error" << endl;
+          cout << "allocation error" << endl;
           exit(-1);
         }
         Objects[i][j]->Wire = ptr;
@@ -2424,7 +2305,7 @@ int MST_Env::AllocObjects() {
 
         ptr = malloc(size);
         if (ptr == NULL) {
-          cout << "alloc error" << endl;
+          cout << "allocation error" << endl;
           exit(-1);
         }
         Objects[i][j]->Reg = ptr;
@@ -2563,7 +2444,7 @@ int MST_Env::Bind(MST_Object* sym, MST_Object* obj) {
     if (!dst) {
       dst = (MST_Sym*)malloc(sizeof(MST_Sym));
       if (dst == NULL) {
-        cout << "alloc error" << endl;
+        cout << "allocation error" << endl;
         exit(-1);
       }
       Symbols.back().push_back(dst);
@@ -2623,12 +2504,8 @@ MST_Sym* MST_Env::GetSym(MST_Object* sym) {
 
 MST_Object* MST_Env::GetSymVal(MST_Object* sym) {
   MST_Sym* s = GetSym(sym);
-  if (s->Object.Type == Error) {
-    if (MST_GetMode()) {
-      return (MST_Object*)s;
-    } else {
-      exit(-1);
-    }
+  if (s->Object.Type == MST_Error) {
+    return (MST_Object*)s;
   }
   return s->Val;
 }
@@ -2637,7 +2514,7 @@ MST_Sym* MST_Env::AddSpecialSym(MST_Object* sym, MST_Object* val) {
   if (sym->Type == MST_SymbolReference) {
     MST_Sym* s = (MST_Sym*)malloc(sizeof(MST_Sym));
     if (s == NULL) {
-      cout << "alloc error" << endl;
+      cout << "allocation error" << endl;
       exit(-1);
     }
     Symbols.back().push_back(s);

@@ -28,6 +28,7 @@ MST_Parser::MST_Parser() {
     info->OprtID = -1;
     info->WordID = i;
   }
+  Mode = 1;
 }
 
 MST_Parser::~MST_Parser() {
@@ -151,7 +152,7 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
         if ('0' <= ptr[0] && ptr[0] <= '9') {
           MST_Object* val = AllocMST_Val(32);
           if (val == NULL) {
-            cout << "alloc error" << endl;
+            cout << "allocation error" << endl;
             return {};
           }
           int* v = (int*)val->Ptr;
@@ -168,12 +169,12 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
         } else {
           MST_Object* sym = (MST_Object*)malloc(sizeof(MST_Object));
           if (sym == NULL) {
-            cout << "alloc error" << endl;
+            cout << "allocation error" << endl;
             return {};
           }
           MST_Str* str = AllocMST_Str(tokens[n].Len);
           if (str == NULL) {
-            cout << "alloc error" << endl;
+            cout << "allocation error" << endl;
             return {};
           }
           sym->Type = MST_SymbolReference;
@@ -595,12 +596,12 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
     return {};
   }
   for (s = list.size() - 1; 0 <= s; s--) {
-    idl = -1;
     idr = -1;
-    if (s) {
-      if (list[s].index() != 0) continue;
+    idl = -1;
+    if (list[s].index() == 0) {
       idl = get<MSTP_TokenInfo*>(list[s])->OprtID;
-      if (idl != MSTP_BracketL && idl != MSTP_ParenL && idl != MSTP_CurlyBracketL) continue;
+    }
+    if (idl == MSTP_BracketL || idl == MSTP_ParenL || idl == MSTP_CurlyBracketL) {
       for (e = s; e < list.size(); e++) {
         if (list[e].index() != 0) continue;
         idr = get<MSTP_TokenInfo*>(list[e])->OprtID;
@@ -610,10 +611,13 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
         cout << "parse error" << endl;
         return {};
       }
-    } else {
+    } else if (s == 0) {
       s = -1;
       e = list.size();
+    } else {
+      continue;
     }
+
     vector<variant<MSTP_TokenInfo*, MST_Object*>> list2 = {};
     if (e-s>1) {
       for (int i = e - 1; s < i; i--) {
@@ -862,24 +866,24 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
         list = list4;
       }
     } else if (idl == MSTP_ParenL) {
-      vector<MST_Object*> args;
-      for (int i = 0; i < list2.size(); i++) {
-        if (list2[i].index() == 0) {
-          if (get<MSTP_TokenInfo*>(list2[i])->OprtID == MSTP_Comma) {
-            continue;
-          } else {
-            cout << "parse error" << endl;
-            if (Mode) {
-              Error = 1;
-              return {};
+      if (s > 0 && list[s-1].index() == 1) {
+        vector<MST_Object*> args;
+        for (int i = 0; i < list2.size(); i++) {
+          if (list2[i].index() == 0) {
+            if (get<MSTP_TokenInfo*>(list2[i])->OprtID == MSTP_Comma) {
+              continue;
             } else {
-              exit(-1);
+              cout << "parse error" << endl;
+              if (Mode) {
+                Error = 1;
+                return {};
+              } else {
+                exit(-1);
+              }
             }
           }
+          args.push_back(get<MST_Object*>(list2[list2.size() - i -1]));
         }
-        args.push_back(get<MST_Object*>(list2[list2.size() - i -1]));
-      }
-      if (s > 0 && list[s-1].index() == 1) {
         if (s > 2 && list[s-2].index() == 0
             && get<MSTP_TokenInfo*>(list[s-2])->OprtID == MSTP_Piriod
             && list[s-3].index() == 1) {
@@ -936,6 +940,7 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
         }
         list = list4;
       }
+      if (!s) s = 1;
     } else if (idl == MSTP_CurlyBracketL) {
       vector<MST_Object*> items = {};
       for (int i = 0; i < list2.size(); i++) {
@@ -968,6 +973,7 @@ vector<MST_Object*> MST_Parser::Parse2(vector<variant<MSTP_TokenInfo*, MST_Objec
         list4.push_back(list[i]);
       }
       list = list4;
+      if (!s) s = 1;
     } else {
       vector<MST_Object*> ret = {};
       for (int i = list2.size()-1; 0 <= i; i--) {

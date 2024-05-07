@@ -109,5 +109,4 @@ public:
 vector<MST_Object*> MSTP_Parse(char* src);
 vector<MST_Object*> MSTP_Read();
 
-int EnableITP();
 MST_Object* TimingChart(int nargs, MST_Object** args);

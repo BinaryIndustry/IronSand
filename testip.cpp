@@ -60,7 +60,7 @@ int main() {
           MST_Expr* expr = (MST_Expr*)obj[i];
           MST_Object* ret = EvalMST_Expr(expr, 0);
           if (ret && expr->Operator != MST_Bind) {
-            if (ret->Type == MST_Value) {
+            if (ret && ret->Type == MST_Value) {
               MST_Val* val = (MST_Val*)ret;
               if (!val->nDim && val->ItemWidth <= 32) {
                 cout << GetIntMST_Obj((MST_Object*)val) << endl;
