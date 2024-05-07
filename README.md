@@ -10,7 +10,7 @@ at (pos CLK): //CLK信号の立ち上がりエッジに次の処理を実行し�
   LEDR = ~LEDR //LEDRを反転する(タブまたはスペース二つでインデントしてください)
   
 printsv()
-clk = {$CLK} //配列"clk"を生成し、信号"CLK"の値を格納する
+clk = {$CLK} //リスト"clk"を生成し、信号"CLK"の値を格納する
 led = {$LEDR}
 
 for (i 100):　//次の処理を100回繰り返します
@@ -18,4 +18,9 @@ for (i 100):　//次の処理を100回繰り返します
   clk.push($CLK) //CLKの現在の値を配列に追加します
   led.push($LEDR)
 
-tchart(clk, led) //配列clk、ledを元にタイミングチャートをsvgファイルで生成します(./timingchart.svg)
+tchart(clk, led) //リストclk、ledを元にタイミングチャートをsvgファイルで生成します(./timingchart.svg)
+
+TO DO
+・リスト要素への代入
+・多重リスト
+・メモリリークの調査
