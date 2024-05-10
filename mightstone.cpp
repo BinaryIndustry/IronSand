@@ -622,6 +622,35 @@ MST_Object* Push_MST_Lst(int nargs, MST_Object** args) {
   return NULL;
 }
 
+MST_Object* MST_ConvertListToArray(MST_Lst* lst) {
+  static MST_Object error = {NULL, MST_Error};
+  MST_Object* array = AllocMST_Array(32, {lst->nItems});
+  int* ptr = (int*)array->Ptr;
+  for (int i = 0; i < lst->nItems; i++) {
+    if (lst->Items[i]->Type == MST_List) {
+      cout << "TO DO" << endl;
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
+    MST_SetErrorFlag(0);
+    ptr[i] = GetIntMST_Obj(lst->Items[i]);
+    if (MST_GetErrorFlag()) {
+      return &error;
+    }
+  }
+  return array;
+}
+
+MST_Object* MST_MakeArray(int nargs, MST_Object** args) {
+  if (nargs != 1 || args[0]->Type != MST_List) {
+    return NULL;
+  }
+  return MST_ConvertListToArray((MST_Lst*)args[0]);
+}
+
 MST_Func* AllocMST_Func(int nargs, int nexpr) {
   MST_Func* func = (MST_Func*)malloc(sizeof(MST_Func)+4*nexpr);
   if (func == NULL) {
@@ -1594,27 +1623,18 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       break;
     }
   }
-  if (obj->Type == MST_List) {
+  while (obj->Type == MST_List && index.size()) {
     MST_Lst* lst = (MST_Lst*)obj;
-    for (int i = 0; i < index.size(); i++) {
-      if (lst->nItems <= index[i]) {
-        cout << "invalid index" << endl;
-        if (MST_GetMode()) {
-          return {NULL};
-        } else {
-          exit(-1);
-        }
-      }
-      obj = lst->Items[index[i]];
-      if (obj->Type != MST_List) {
-        vector<int> idx = {};
-        for (int j = i+1; j < index.size(); j++) {
-          idx.push_back(index[j]);
-        }
-        index = idx;
-        break;
+    if (lst->nItems <= index.back()) {
+      cout << "invalid index" << endl;
+      if (MST_GetMode()) {
+        return {NULL};
+      } else {
+        exit(-1);
       }
     }
+    obj = lst->Items[index.back()];
+    index.pop_back();
   }
   uint8_t* ptr = NULL;
   int iw;
@@ -1651,6 +1671,14 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     }
     return {obj, ptr, 0, iw};
   }
+  if (index.size() > ndim+1) {
+    cout << "invalid index" << endl;
+    if (MST_GetMode()) {
+      return {NULL};
+    } else {
+      exit(-1);
+    }
+  }
   int b = (index.size() == ndim+1);
   if (b && index[0] >= iw) {
     cout << "invalid index" << endl;
@@ -1673,7 +1701,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
   int size = s;
   int off = 0;
   for (int i = 0; i < ndim; i++) {
-    if (nitems[i] <= index[ndim-i-b-1]) {
+    if (nitems[i] <= index[b + i]) {
       cout << "index exceeds the size" << endl;
       if (MST_GetErrorFlag()) {
         if (MST_GetMode()) {
@@ -1683,11 +1711,11 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
         }
       }
     }
-    off += size * index[ndim-i-b-1];
+    off += size * index[b + i];
     size *= nitems[i];
   }
   ptr += off;
-  if (b) ptr += index[0] >> 3;
+  if (b) ptr += (index[0] >> 3);
   if (ref->Width) {
     MST_SetErrorFlag(0);
     int w = GetIntMST_Obj(ref->Width);
@@ -1719,7 +1747,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       boff = (8-boff)&7;
     }
     return {obj, ptr, boff, w > 0 ? w : -w};
-  } else{
+  } else {
     return {obj, ptr, b ? index[0] & 7 : 0, b ? 1 : iw};
   }
 }
@@ -2137,6 +2165,7 @@ MST_Env::MST_Env() {
   Error = 0;
   Mode = 0;
   AddExFunc(string("list.push"), Push_MST_Lst);
+  AddExFunc(string("array"), MST_MakeArray);
 }
 
 MST_Env::~MST_Env() {

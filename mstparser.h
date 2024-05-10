@@ -97,7 +97,7 @@ private:
   int Error;
   int Mode;
 
-  vector<MST_Object*> Parse2(vector<variant<MSTP_TokenInfo*, MST_Object*>>& list, int mode);
+  vector<variant<MSTP_TokenInfo*, MST_Object*>> ParseExpr(vector<variant<MSTP_TokenInfo*, MST_Object*>> list, int mode);
 
 public:
   MST_Parser();
