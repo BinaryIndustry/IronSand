@@ -216,7 +216,7 @@ struct MST_Lst {
 
 MST_Lst* AllocMST_Lst(int n);
 MST_Object* Push_MST_Lst(int nargs, MST_Object** args);
-MST_Object* ConvertListToArray(MST_Lst* lst);
+MST_Object* MST_ConvertListToArray(MST_Lst* lst);
 MST_Object* MST_MakeArray(int nargs, MST_Object** args);
 
 int MST_TransArglst(MST_Lst* dst, MST_Lst* src);

@@ -58,7 +58,7 @@ MST_Object* SolveMST_Object(MST_Object* obj) {
       *((int*)val->Ptr) = 0;
       MST_Sym* cnt = MST_AddSpecialSym(expr->Operands[0], val);
       vector<MST_Object*> progexpr;
-      for (int i = 0; i < n; i++) {
+      while (*((int*)val->Ptr) < n) {
         for (int j = 0; j < expr->nOperand - 2; j++) {
           if (expr->Operands[j+2] && expr->Operands[j+2]->Type == MST_Expression)
             progexpr.push_back(SolveMST_Object(CopyMST_Object(expr->Operands[j+2])));
@@ -70,7 +70,7 @@ MST_Object* SolveMST_Object(MST_Object* obj) {
               }
             }
           }
-        *((int*)val->Ptr) = i+1;
+        (*((int*)val->Ptr))++;
         MST_BindSym((MST_Object*)cnt, val);
       }
       MST_Expr* prog = AllocMST_Expr(progexpr.size());
@@ -135,6 +135,18 @@ MST_Object* SolveMST_Object(MST_Object* obj) {
       }
     }
     for (int i = 0; i < expr->nOperand; i++) {
+      if (expr->Operator == MST_If) {
+        if (expr->Operands[i]->Type == MST_List) {
+          MST_Lst* lst = (MST_Lst*)expr->Operands[i];
+          for (int j = 0; j < lst->nItems; j++) {
+            lst->Items[j] = SolveMST_Object(lst->Items[j]);
+            if (lst->Items[j]->Type == MST_Error) {
+              return &error;
+            }
+          }
+          continue;
+        }
+      }
       expr->Operands[i] = SolveMST_Object(expr->Operands[i]);
       if (expr->Operands[i]->Type == MST_Error) {
         return &error;
@@ -149,25 +161,12 @@ MST_Object* SolveMST_Object(MST_Object* obj) {
     }
     return ret;
   } else if (obj->Type == MST_List) {
-    MST_Lst* lst = (MST_Lst*)obj;
-    for (int i = 0; i < lst->nItems; i++) {
-      if (lst->Items[i]) {
-        lst->Items[i] = SolveMST_Object(lst->Items[i]);
-        if (lst->Items[i]->Type == MST_Error) {
-          return &error;
-        }
-        if (lst->Items[i]->Type == MST_Symbol) {
-          MST_Sym* sym = (MST_Sym*)lst->Items[i];
-          if (sym->Val && sym->Val->Type == MST_Value) {
-            lst->Items[i] = CopyMST_Object(sym->Val);
-            if (lst->Items[i]->Type == MST_Error) {
-              return &error;
-            }
-          }
-        }
-      }
+    MST_Object* ret = MST_ConvertListToArray((MST_Lst*)obj);
+    if (ret->Type == MST_Error) {
+      return &error;
     }
-    return obj;
+    FreeMST_Object(obj);
+    return ret;
   } else if (obj->Type == MST_ObjectReference) {
     MST_ObjRef* ref = (MST_ObjRef*)obj;
     ref->Object.Ptr = SolveMST_Object((MST_Object*)ref->Object.Ptr);
@@ -212,7 +211,19 @@ MST_SVExpr SVRefMST_Object(MST_Object* obj) {
     MST_SVLog* log = (MST_SVLog*) obj;
     string* name = new string;
     MST_Str* str = log->Name;
-    *name = string(str->Data, str->cLen);
+    if (str) *name = string(str->Data, str->cLen);
+    while (!str) {
+      *name = "unnamed_logic_";
+      ostringstream ss;
+      ss << setfill('0') << setw(4) << std::hex << (rand() & 0xffff);
+      *name += ss.str();
+      if (!MST_FindSVName(*name)) {
+        str = AllocMST_Str(name->size());
+        strcpy(str->Data, name->c_str());
+        MST_BindSVName(*name, obj);
+        log->Name = str;
+      }
+    }
     if (log->nScope) {
       *name += "_" + to_string(log->nScope);
     }
@@ -302,7 +313,22 @@ string SVDecMST_Object(MST_SVLog* obj) {
     ret += w + " ";
   }
   MST_Str* name = obj->Name;
-  ret += string(name->Data, name->cLen);
+  if (name) ret += string(name->Data, name->cLen);
+  while (!name) {
+    string str;
+    str = "unnamed_logic_";
+    ostringstream ss;
+    ss << setfill('0') << setw(4) << std::hex << (rand() & 0xffff);
+    str += ss.str();
+    if (!MST_FindSVName(str)) {
+      name = AllocMST_Str(str.size());
+      strcpy(name->Data, str.c_str());
+      MST_BindSVName(str, (MST_Object*)obj);
+      obj->Name = name;
+      ret += str;
+    }
+  }
+
   if (obj->nScope) {
     ret += "_" + to_string(obj->nScope);
   }
@@ -628,7 +654,24 @@ MST_Object* MST_ConvertListToArray(MST_Lst* lst) {
   int* ptr = (int*)array->Ptr;
   for (int i = 0; i < lst->nItems; i++) {
     if (lst->Items[i]->Type == MST_List) {
-      cout << "TO DO" << endl;
+      cout << "Nested array is not supported currently" << endl;
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
+    if (lst->Items[i]->Type != MST_Value) {
+      cout << "Array can contain integer only" << endl;
+      if (MST_GetMode()) {
+        return &error;
+      } else {
+        exit(-1);
+      }
+    }
+    MST_Val* val = (MST_Val*)lst->Items[i];
+    if (val->ItemWidth > 32 || val->nDim) {
+      cout << "Array can contain integer only" << endl;
       if (MST_GetMode()) {
         return &error;
       } else {
@@ -789,67 +832,72 @@ MST_SVExpr SVCodeMST_Expr(MST_Expr* expr) {
 }
 
 MST_SVExpr SVCodeMST_ExprIF(MST_Expr* expr) {
-  if (expr->nOperand < 2 || expr->nOperand > 3) {
+  if (expr->nOperand < 2) {
     cout << "SVCodeMST_ExprIF: Invalid expression" << endl;
     exit(-1);
   }
-  MST_SVExpr ret = {{NULL, MST_SVExpression}, NULL, NULL};
-  MST_SVExpr cond = SVRefMST_Object(expr->Operands[0]);
-  if (!cond.Ref) {
-    cout << "SVCodeMST_ExprIF: Invalid expression" << endl;
-    exit(-1);
-  }
-  string th;
-  if (expr->Operands[1]->Type == MST_List) {
-    MST_Lst* lst = (MST_Lst*)expr->Operands[1];
+  queue<MST_SVExpr> cond;
+  if (expr->Operands[0]->Type == MST_List) {
+    MST_Lst* lst = (MST_Lst*)expr->Operands[0];
     for (int i = 0; i < lst->nItems; i++) {
-      if (lst->Items[i]) {
-        MST_SVExpr sv = SVRefMST_Object(lst->Items[i]);
-        if (sv.Prev) {
-          th += AddIndent(*sv.Prev);
-          delete sv.Prev;
-        }
-        if (sv.Ref) delete sv.Ref;
-      }
+      cond.push(SVRefMST_Object(lst->Items[i]));
     }
   } else {
-    MST_SVExpr sv = SVRefMST_Object(expr->Operands[0]);
-    if (sv.Prev) {
-      th = *sv.Prev;
-      delete sv.Prev;
-    }
-    if (sv.Ref) delete sv.Ref;
+    cond.push(SVRefMST_Object(expr->Operands[0]));
   }
-  string el;
-  if (expr->nOperand == 3) {
-    if (expr->Operands[2]->Type == MST_List) {
-      MST_Lst* lst = (MST_Lst*)expr->Operands[2];
-      for (int i = 0; i < lst->nItems; i++) {
-        if (lst->Items[i]) {
-          MST_SVExpr sv = SVRefMST_Object(lst->Items[i]);
-          if (sv.Prev) {
-            el += AddIndent(*sv.Prev);
-            delete sv.Prev;
-          }
-          if (sv.Ref) delete sv.Ref;
-        }
-      }
+  MST_SVExpr ret = {{NULL, MST_SVExpression}, new string, NULL};
+  int nest = 0;
+  for (int i = 0; i < expr->nOperand-1; i++) {
+    if (!cond.size()) {
+      *ret.Prev += "begin\n";
     } else {
-      MST_SVExpr sv = SVRefMST_Object(expr->Operands[0]);
-      if (sv.Prev) {
-        el = *sv.Prev;
-        delete sv.Prev;
+      if (!cond.front().Ref) {
+        cout << "SVCodeMST_ExprIF: Invalid expression" << endl;
+        exit(-1);
       }
-      if (sv.Ref) delete sv.Ref;
+      if (cond.front().Prev) {
+        if (i) {
+          *ret.Prev += "begin\n";
+          *ret.Prev += *cond.front().Prev;
+          nest += 1;
+        } else {
+          *ret.Prev += *cond.front().Prev;
+        }
+        for (int j = 0; j < nest; j++) {
+          *ret.Prev += "\t";
+        }
+        *ret.Prev += "if (" + *cond.front().Ref + ") begin\n";
+        delete cond.front().Prev;
+        delete cond.front().Ref;
+      } else {
+        *ret.Prev += "if (" + *cond.front().Ref + ") begin\n";
+        delete cond.front().Ref;
+      }
+      cond.pop();
     }
-  }
-  ret.Prev = cond.Prev;
-  if (!ret.Prev) ret.Prev = new string;
-  *ret.Prev += "if (" + *cond.Ref + ") begin\n" + th + "end";
-  if (el.size()) {
-    *ret.Prev += " else begin\n" + el + "end";
+    MST_SVExpr th = SVRefMST_Object(expr->Operands[i+1]);
+    if (th.Prev) {
+      *ret.Prev += AddIndent(*th.Prev, nest+1);
+      delete th.Prev;
+    }
+    if (th.Ref) {
+      delete th.Ref;
+    }
+    for (int j = 0; j < nest; j++) {
+      *ret.Prev += "\t";
+    }
+    *ret.Prev += "end";
+    if (i < expr->nOperand - 2) {
+      *ret.Prev += " else ";
+    }
   }
   *ret.Prev += "\n";
+  for (int i = 0; i < nest; i++) {
+    for (int j = 0; j < nest-i-1; j++) {
+      *ret.Prev += "\t";
+    }
+    *ret.Prev += "end\n";
+  }
   return ret;
 }
 
@@ -1137,7 +1185,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     MST_TransArglst(task->Args, arg);
     return (MST_Object*)task;
   } else if (expr->Operator == MST_If) {
-    if (expr->nOperand < 2 || expr->nOperand > 3) {
+    if (expr->nOperand < 2) {
       cout << "error" << endl;
       if (MST_GetMode()) {
         return &error;
@@ -1146,79 +1194,36 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
       }
     }
     int f = 0;
-    MST_Object* cond = expr->Operands[0];
-    if (cond->Type == MST_Expression) {
-      cond = EvalMST_Expr((MST_Expr*)cond, sim);
-      if (cond->Type == MST_Error) {
-        return &error;
-      }
-      f = 1;
-    } else if (cond->Type == MST_Symbol == cond->Type == MST_SymbolReference) {
-      cond = MST_GetSymVal(cond);
-      if (cond->Type == MST_Error) {
-        return &error;
-      }
-      f = 1;
-    }
-    MST_SetErrorFlag(0);
-    int c = GetIntMST_Obj(cond);
-    if (MST_GetErrorFlag()) {
-      if (MST_GetMode()) {
-        return &error;
-      } else {
-        exit(-1);
-      }
-    }
-    if (f) FreeMST_Object(cond);
-    if (c) {
-      if (expr->Operands[1]->Type == MST_Expression) {
-        return EvalMST_Expr((MST_Expr*)expr->Operands[1], sim);
-      } else if (expr->Operands[1]->Type == MST_List) {
-        MST_Lst* lst = (MST_Lst*)expr->Operands[1];
-        MST_Object* ret = NULL;
-        for (int i = 0; i < lst->nItems; i++) {
-          if (ret) FreeMST_Object(ret);
-          ret = NULL;
-          if (lst->Items[i] && lst->Items[i]->Type == MST_Expression)
-            ret = EvalMST_Expr((MST_Expr*)lst->Items[i], sim);
-          if (ret && ret->Type == MST_Error) {
-            return &error;
-          }
-        }
-        return ret;
-      } else {
-        cout << "error" << endl;
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+    vector<MST_Object*> cond;
+    if (expr->Operands[0]->Type == MST_List) {
+      MST_Lst* lst = (MST_Lst*)expr->Operands[0];
+      for (int i = 0; i < lst->nItems; i++) {
+        cond.push_back(lst->Items[i]);
       }
     } else {
-      if (expr->Operands[2]->Type == MST_Expression) {
-        return EvalMST_Expr((MST_Expr*)expr->Operands[2], sim);
-      } else if (expr->Operands[2]->Type == MST_List) {
-        MST_Lst* lst =(MST_Lst*) expr->Operands[2];
-        MST_Object* ret = NULL;
-        for (int i = 0; i < lst->nItems; i++) {
-          if (ret) FreeMST_Object(ret);
-          ret = NULL;
-          if (lst->Items[i] && lst->Items[i]->Type == MST_Expression)
-            ret = EvalMST_Expr((MST_Expr*)lst->Items[i], sim);
-          if (ret && ret->Type == MST_Error) {
-            return &error;
-          }
-        }
-        return ret;
-      } else {
-        cout << "error" << endl;
+      cond.push_back(expr->Operands[0]);
+    }
+    for (int i = 0; i < cond.size(); i++) {
+      if (expr->nOperand <= i+1) {
+      cout << "error" << endl;
         if (MST_GetMode()) {
           return &error;
         } else {
           exit(-1);
         }
       }
+      MST_SetErrorFlag(0);
+      int c = GetIntMST_Obj(cond[i]);
+      if (MST_GetErrorFlag()) {
+        return &error;
+      }
+      if (c) {
+        return EvalMST_Object(expr->Operands[i+1], sim);
+      } else if (i+1 == cond.size() && i+2 < expr->nOperand) {
+        return EvalMST_Object(expr->Operands[i+2], sim);
+      }
     }
+    return NULL;
   } else if (expr->Operator == MST_Progn) {
     MST_Object* ret = NULL;
     for (int i = 0; i < expr->nOperand; i++) {

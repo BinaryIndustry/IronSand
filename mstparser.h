@@ -34,17 +34,18 @@ enum MSTP_Oprt {
   MSTP_Space,
   MSTP_Tab,
   MSTP_NL,
-  MSTP_Semicolon,
+  MSTP_Colon,
   MSTP_Comma,
   MSTP_Hex,
   MSTP_Dollar,
   MSTP_DollarEq,
   MSTP_CurlyBracketL,
   MSTP_CurlyBracketR,
-  MSTP_PlusSemicolon,
-  MSTP_MinusSemicolon,
+  MSTP_PlusColon,
+  MSTP_MinusColon,
   MSTP_Piriod,
-  MSTP_Colon,
+  MSTP_Semicolon,
+  MSTP_ColonSemicolon,
 
   MSTP_SetAdd,
   MSTP_SetSub,
@@ -68,8 +69,10 @@ enum MSTP_ResWord {
   MSTP_Defun,
   MSTP_If,
   MSTP_Else,
+  MSTP_Elif,
   MSTP_For,
-  MSTP_Deftask
+  MSTP_Deftask,
+  MSTP_ClockWork
 };
 
 struct MSTP_TokenInfo;
@@ -96,6 +99,10 @@ private:
 
   int Error;
   int Mode;
+
+  MST_Object* CwkCnt = NULL;
+  int nState = 0;
+  int CLFlag = 0;
 
   vector<variant<MSTP_TokenInfo*, MST_Object*>> ParseExpr(vector<variant<MSTP_TokenInfo*, MST_Object*>> list, int mode);
 
