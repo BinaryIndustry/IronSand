@@ -22,6 +22,8 @@ for (i 100):　//次の処理を100回繰り返します
 
 tchart(clk, led) //リストclk、ledを元にタイミングチャートをsvgファイルで生成します(./timingchart.svg)
 
+quit() //インタプリタを終了します
+
 予約語
   in, out, io, 
   at, pos, neg, 
