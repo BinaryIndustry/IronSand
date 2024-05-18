@@ -97,8 +97,8 @@ private:
   vector<MSTP_TokenInfo*> Operators;
   vector<MSTP_TokenInfo*> Words;
 
-  int Error;
-  int Mode;
+  int Error = 0;
+  int Mode = 0;
 
   MST_Object* CwkCnt = NULL;
   int nState = 0;
@@ -111,9 +111,13 @@ public:
   ~MST_Parser();
 
   vector<MST_Object*> Parse(char* src);
+  vector<MST_Object*> Read();
+
+  int SetMode(int m);
 };
 
 vector<MST_Object*> MSTP_Parse(char* src);
 vector<MST_Object*> MSTP_Read();
 
 MST_Object* TimingChart(int nargs, MST_Object** args);
+int MSTP_SetMode(int m);

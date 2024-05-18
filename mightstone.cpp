@@ -114,8 +114,14 @@ MST_Object* SolveMST_Object(MST_Object* obj) {
           exit(-1);
         }
       }
-      if (expr->Operands[0]->Type == nMST_Task) {
-        MST_Object* ret = SolveMST_Task((MST_Task*)expr->Operands[0], expr->nOperand - 1, expr->Operands+1);
+      MST_Object* oprd1;
+      if (expr->Operands[0]->Type == MST_SymbolReference) {
+        oprd1 = MST_GetSymVal(expr->Operands[0]);
+      } else {
+        oprd1 = expr->Operands[0];
+      }
+      if (oprd1->Type == nMST_Task) {
+        MST_Object* ret = SolveMST_Task((MST_Task*)oprd1, expr->nOperand - 1, expr->Operands+1);
         FreeMST_Object(obj);
         if (ret->Type == MST_Error) {
           if (MST_GetMode()) {
@@ -1290,16 +1296,12 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     int w = expr->nOperand ? GetIntMST_Obj(expr->Operands[0]) : 1;
     log->ItemWidth = w;
     int size = w >> 3;
-    if (size & 7) size++;
+    if (w & 7) size++;
     for (int i = 1; i < expr->nOperand; i++) {
       MST_SetErrorFlag(0);
       int n = GetIntMST_Obj(expr->Operands[i]);
       if (MST_GetErrorFlag()) {
-        if (MST_GetMode()) {
-          return &error;
-        } else {
-          exit(-1);
-        }
+        return &error;
       }
       log->nItems[i-1] = n;
       size *= n;
@@ -1311,6 +1313,7 @@ MST_Object* EvalMST_Expr(MST_Expr* expr, int sim) {
     }
     log->Wire = ptr;
     memset(ptr, 0, size);
+
 
     ptr = malloc(size);
     if (ptr == NULL) {

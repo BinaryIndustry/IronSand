@@ -40,7 +40,10 @@ MST_Parser::~MST_Parser() {
   }
 }
 
-int ErrorFlagMSTP = 0;
+int MST_Parser::SetMode(int m) {
+  Mode = m;
+  return 0;
+}
 
 vector<MST_Object*> MST_Parser::Parse(char* src) {
   vector<MST_Object*> ret = {};
@@ -164,7 +167,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
             *v *= 10;
             if (!('0' <= ptr[k] && ptr[k] <= '9')) {
               cout << "parse error" << endl;
-              return {};
+              if (Mode) {
+                return {};
+              } else {
+                exit(-1);
+              }
             }
             *v += ptr[k] - '0';
           }
@@ -173,13 +180,13 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
           MST_Object* sym = (MST_Object*)malloc(sizeof(MST_Object));
           if (sym == NULL) {
             cout << "allocation error" << endl;
-            return {};
+            if (Mode) {
+              return {};
+            } else {
+              exit(-1);
+            }
           }
           MST_Str* str = AllocMST_Str(tokens[n].Len);
-          if (str == NULL) {
-            cout << "allocation error" << endl;
-            return {};
-          }
           sym->Type = MST_SymbolReference;
           sym->Ptr = str;
 
@@ -476,7 +483,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
     if (fwid == MSTP_At) {
       if (atnest || cwknest || list.size() == 1) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       atnest = cnest + 1;
       triggers = {};
@@ -493,7 +504,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
           if (idop == MSTP_ParenR) {
             if (!parl) {
               cout << "parse error" << endl;
-              return {};
+              if (Mode) {
+                return {};
+              } else {
+                exit(-1);
+              }
             }
             j++;
             break;
@@ -505,14 +520,22 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
           if (idwd == MSTP_Pos || idwd == MSTP_Neg) {
             if (j+1 >= list.size() || list[j+1].index() != 1) {
               cout << "parse error" << endl;
-              return {};
+              if (Mode) {
+                return {};
+              } else {
+                exit(-1);
+              }
             }
             triggers.push_back({idwd, get<MST_Object*>(list[j+1])});
             j++;
             continue;
           }
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         } else {
           triggers.push_back({-1, get<MST_Object*>(list[j])});
         }
@@ -543,7 +566,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
             }
           } else {
             cout << "parse error" << endl;
-            return {};
+            if (Mode) {
+              return {};
+            } else {
+              exit(-1);
+            }
           }
         }
       }
@@ -551,7 +578,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
     } else if (fwid == MSTP_ClockWork) {
       if (atnest || cwknest || list.size() == 1) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       cwknest = cnest + 1;
       triggers = {};
@@ -566,7 +597,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       }
       if (list[j].index() != 1) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       CwkCnt = get<MST_Object*>(list[j]);
       j++;
@@ -576,7 +611,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
           if (idop == MSTP_ParenR) {
             if (!parl) {
               cout << "parse error" << endl;
-              return {};
+              if (Mode) {
+                return {};
+              } else {
+                exit(-1);
+              }
             }
             parl--;
             if (!parl) {
@@ -591,14 +630,22 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
           if (idwd == MSTP_Pos || idwd == MSTP_Neg) {
             if (j+1 >= list.size() || list[j+1].index() != 1) {
               cout << "parse error" << endl;
-              return {};
+              if (Mode) {
+                return {};
+              } else {
+                exit(-1);
+              }
             }
             triggers.push_back({idwd, get<MST_Object*>(list[j+1])});
             j++;
             continue;
           }
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         } else {
           triggers.push_back({-1, get<MST_Object*>(list[j])});
         }
@@ -648,7 +695,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
             }
           } else {
             cout << "parse error" << endl;
-            return {};
+            if (Mode) {
+              return {};
+            } else {
+              exit(-1);
+            }
           }
         }
         if (CLFlag) {
@@ -661,11 +712,19 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
     } else if (fwid == MSTP_Defun || fwid == MSTP_Deftask) {
       if (defun || atnest || cwknest || deftask || ifnest.size()) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       if (list.size() < 4) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       if (fwid == MSTP_Defun) {
         defun = 1;
@@ -676,12 +735,20 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       funcexpr = {};
       if (list[1].index() != 1 || get<MST_Object*>(list[1])->Type != MST_SymbolReference) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       funcname = get<MST_Object*>(list[1]);
       if (list[2].index() != 0 || get<MSTP_TokenInfo*>(list[2])->OprtID != MSTP_ParenL) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       int j;
       for (j = 3; j < list.size(); j++) {
@@ -693,19 +760,31 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
             continue;
           } else {
             cout << "parse error" << endl;
-            return {};
+            if (Mode) {
+              return {};
+            } else {
+              exit(-1);
+            }
           }
         } else {
           if (get<MST_Object*>(list[j])->Type != MST_SymbolReference) {
             cout << "parse error" << endl;
-            return {};
+            if (Mode) {
+              return {};
+            } else {
+              exit(-1);
+            }
           }
           funcargs.push_back(get<MST_Object*>(list[j]));
         }
       }
       if (j >= list.size() || list[j].index() != 0 || get<MSTP_TokenInfo*>(list[j])->OprtID != MSTP_ParenR) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       continue;
     } else if (fwid == MSTP_If) {
@@ -723,7 +802,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
           if (idop == MSTP_ParenR) {
             if (!parl) {
               cout << "unbalanced parentheses" << endl;
-              return {};
+              if (Mode) {
+                return {};
+              } else {
+                exit(-1);
+              }
             }
             parl--;
             if (!parl) {
@@ -742,17 +825,29 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       }
       if (parl) {
         cout << "unbalanced parentheses" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       if (!cond.size()) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       Error = 0;
       cond = ParseExpr(cond, atnest || cwknest || deftask);
       if (cond.size() != 1 || Error || cond[0].index() != 1) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       ifcond.push_back({get<MST_Object*>(cond[0])});
       if (j < list.size()) {
@@ -789,7 +884,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
     } else if (fwid == MSTP_Else || fwid == MSTP_Elif) {
       if (!ifnest.size() || ifnest.back() != cnest + 1) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       ifthen.back().push_back({});
       int j = 0;
@@ -811,7 +910,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
             if (idop == MSTP_ParenR) {
               if (!parl) {
                 cout << "unbalanced parentheses" << endl;
-                return {};
+                if (Mode) {
+                  return {};
+                } else {
+                  exit(-1);
+                }
               }
               parl--;
               if (!parl) {
@@ -832,7 +935,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
         cond = ParseExpr(cond, atnest || cwknest || deftask);
         if (cond.size() != 1 || Error || cond[0].index() != 1) {
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         ifcond.back().push_back(get<MST_Object*>(cond[0]));
       } else {
@@ -853,12 +960,20 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
         cond = ParseExpr(cond, atnest || cwknest || deftask);
         if (Error) {
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         for (j = 0; j < cond.size(); j++) {
           if (cond[j].index() != 1) {
             cout << "parse error" << endl;
-            return {};
+            if (Mode) {
+              return {};
+            } else {
+              exit(-1);
+            }
           }
           MST_Object* c = get<MST_Object*>(cond[j]);
           if (c->Type == MST_Expression) {
@@ -876,7 +991,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       if (list[1].index() == 0 && get<MSTP_TokenInfo*>(list[1])->OprtID == MSTP_ParenL) parl = 1;
       if (list[1+parl].index() == 0) {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       forcnt.push_back(get<MST_Object*>(list[1+parl]));
       vector<variant<MSTP_TokenInfo*, MST_Object*>> max;
@@ -907,12 +1026,20 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
         max = ParseExpr(max, atnest || cwknest || deftask);
         if (max.size() != 1 || Error || max[0].index() != 1) {
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         formax.push_back(get<MST_Object*>(max[0]));
       } else {
         cout << "parse error" << endl;
-        return {};
+        if (Mode) {
+          return {};
+        } else {
+          exit(-1);
+        }
       }
       if (j < list.size()) {
         if (list[j].index() == 0) {
@@ -931,7 +1058,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
         p = ParseExpr(p, atnest || cwknest || deftask);
         if (Error) {
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         for (j = 0; j < p.size(); j++) {
           if (p[j].index() == 1) {
@@ -943,7 +1074,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
             }
           } else {
             cout << "parse error" << endl;
-            return {};
+            if (Mode) {
+              return {};
+            } else {
+              exit(-1);
+            }
           }
         }
       }
@@ -953,13 +1088,21 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
     vector<variant<MSTP_TokenInfo*, MST_Object*>> p = ParseExpr(list, atnest || cwknest || deftask);
     if (Error) {
       cout << "parse error" << endl;
-      return {};
+      if (Mode) {
+        return {};
+      } else {
+        exit(-1);
+      }
     }
     if (fornest.size() && lastnest == 4) {
       for (int j = 0; j < p.size(); j++) {
         if (p[j].index() != 1) {
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         MST_Object* obj = get<MST_Object*>(p[j]);
         if (obj->Type == MST_Expression) {
@@ -972,7 +1115,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       for (int j = 0; j < p.size(); j++) {
         if (p[j].index() != 1) {
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         MST_Object* obj = get<MST_Object*>(p[j]);
         if (obj->Type == MST_Expression) {
@@ -985,7 +1132,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       for (int j = 0; j < p.size(); j++) {
         if (p[j].index() != 1) {
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         MST_Object* obj = get<MST_Object*>(p[j]);
         if (obj->Type == MST_Expression) {
@@ -998,7 +1149,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       for (int j = 0; j < p.size(); j++) {
         if (p[j].index() != 1) {
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         MST_Object* obj = get<MST_Object*>(p[j]);
         if (obj->Type == MST_Expression) {
@@ -1016,7 +1171,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       for (int j = 0; j < p.size(); j++) {
         if (p[j].index() != 1) {
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         MST_Object* obj = get<MST_Object*>(p[j]);
         if (obj->Type == MST_Expression) {
@@ -1029,7 +1188,11 @@ vector<MST_Object*> MST_Parser::Parse(char* src) {
       for (int j = 0; j < p.size(); j++) {
         if (p[j].index() != 1) {
           cout << "parse error" << endl;
-          return {};
+          if (Mode) {
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         ret.push_back(get<MST_Object*>(p[j]));
       }
@@ -1541,7 +1704,7 @@ vector<MST_Object*> MSTP_Parse(char* src) {
   return mstp->Parse(src);
 }
 
-vector<MST_Object*> MSTP_Read() {
+vector<MST_Object*> MST_Parser::Read() {
   char buff[0xffff];
   int n = 0;
   int ll = 0;
@@ -1552,7 +1715,11 @@ vector<MST_Object*> MSTP_Read() {
   int c = 0;
   while(1) {
     if (n > 0xfffe) {
-      return {};
+      if (Mode) {
+        return {};
+      } else {
+        exit(-1);
+      }
     }
     sem = 0;
     if (c == ':') sem = 1;
@@ -1571,7 +1738,12 @@ vector<MST_Object*> MSTP_Read() {
       case ')':
         if (!npar) {
           cout << "unbalanced parentheses" << endl;
-          return {};
+          if (Mode) {
+            Error = 1;
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         npar--;
         break;
@@ -1581,7 +1753,12 @@ vector<MST_Object*> MSTP_Read() {
       case ']':
       if (!nbr) {
           cout << "unbalanced blackets" << endl;
-          return {};
+          if (Mode) {
+            Error = 1;
+            return {};
+          } else {
+            exit(-1);
+          }
         }
         nbr--;
         break;
@@ -1598,7 +1775,15 @@ vector<MST_Object*> MSTP_Read() {
     }
   }
   buff[n] = 0;
-  return MSTP_Parse(buff);
+  return Parse(buff);
+}
+
+vector<MST_Object*> MSTP_Read() {
+  return mstp->Read();
+}
+
+int MSTP_SetMode(int m) {
+  return mstp->SetMode(m);
 }
 
 MST_Object* TimingChart(int nargs, MST_Object** args) {
